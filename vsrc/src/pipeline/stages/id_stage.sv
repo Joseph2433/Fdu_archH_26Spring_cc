@@ -18,6 +18,10 @@ module id_stage import common::*;(
     output logic  wen_o,
     output logic  trap_o,
     output logic  use_imm_o,
+    output logic  is_load_o,
+    output logic  is_store_o,
+    output logic  mem_unsigned_o,
+    output msize_t mem_size_o,
     output logic  is_word_o,
     output u3     alu_op_o,
     output word_t imm_o,
@@ -27,6 +31,7 @@ module id_stage import common::*;(
     logic rs1_used;
     logic rs2_used;
     logic funct7_sub;
+    logic op1_zero;
 
     // Decoder translates the raw instruction into pipeline control.
     decoder u_decoder(
@@ -37,9 +42,14 @@ module id_stage import common::*;(
         .wen_o        (wen_o),
         .trap_o       (trap_o),
         .use_imm_o    (use_imm_o),
+        .op1_zero_o   (op1_zero),
         .is_word_o    (is_word_o),
         .alu_op_o     (alu_op_o),
         .imm_o        (imm_o),
+        .is_load_o    (is_load_o),
+        .is_store_o   (is_store_o),
+        .mem_unsigned_o(mem_unsigned_o),
+        .mem_size_o   (mem_size_o),
         .rs1_used_o   (rs1_used),
         .rs2_used_o   (rs2_used),
         .funct7_sub_o (funct7_sub)
@@ -61,6 +71,10 @@ module id_stage import common::*;(
             op2_o = ex_bypass_data_i;
         end else if (rs2_used && mem_bypass_en_i && (mem_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
             op2_o = mem_bypass_data_i;
+        end
+
+        if (op1_zero) begin
+            op1_o = '0;
         end
     end
 

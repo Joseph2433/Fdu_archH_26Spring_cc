@@ -13,13 +13,21 @@ module mem_wb_reg import common::*;(
     input  logic  in_wen_i,
     input  logic  in_trap_i,
     input  word_t in_result_i,
+    input  logic  in_store_valid_i,
+    input  word_t in_store_addr_i,
+    input  word_t in_store_data_i,
+    input  u8     in_store_mask_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
     output u32    out_instr_o,
     output u5     out_rd_o,
     output logic  out_wen_o,
     output logic  out_trap_o,
-    output word_t out_result_o
+    output word_t out_result_o,
+    output logic  out_store_valid_o,
+    output word_t out_store_addr_o,
+    output word_t out_store_data_o,
+    output u8     out_store_mask_o
 );
     always_ff @(posedge clk) begin
         if (reset || flush_i) begin
@@ -30,6 +38,10 @@ module mem_wb_reg import common::*;(
             out_wen_o    <= 1'b0;
             out_trap_o   <= 1'b0;
             out_result_o <= '0;
+            out_store_valid_o <= 1'b0;
+            out_store_addr_o  <= '0;
+            out_store_data_o  <= '0;
+            out_store_mask_o  <= '0;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -38,6 +50,10 @@ module mem_wb_reg import common::*;(
             out_wen_o    <= in_wen_i;
             out_trap_o   <= in_trap_i;
             out_result_o <= in_result_i;
+            out_store_valid_o <= in_store_valid_i;
+            out_store_addr_o  <= in_store_addr_i;
+            out_store_data_o  <= in_store_data_i;
+            out_store_mask_o  <= in_store_mask_i;
         end
     end
 endmodule

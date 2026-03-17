@@ -6,12 +6,18 @@ module ex_mem_reg import common::*;(
     input  logic  clk,
     input  logic  reset,
     input  logic  flush_i,
+    input  logic  stall_i,
     input  logic  in_valid_i,
     input  word_t in_pc_i,
     input  u32    in_instr_i,
     input  u5     in_rd_i,
     input  logic  in_wen_i,
     input  logic  in_trap_i,
+    input  logic  in_is_load_i,
+    input  logic  in_is_store_i,
+    input  logic  in_mem_unsigned_i,
+    input  msize_t in_mem_size_i,
+    input  word_t in_store_data_i,
     input  word_t in_result_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
@@ -19,6 +25,11 @@ module ex_mem_reg import common::*;(
     output u5     out_rd_o,
     output logic  out_wen_o,
     output logic  out_trap_o,
+    output logic  out_is_load_o,
+    output logic  out_is_store_o,
+    output logic  out_mem_unsigned_o,
+    output msize_t out_mem_size_o,
+    output word_t out_store_data_o,
     output word_t out_result_o
 );
     always_ff @(posedge clk) begin
@@ -29,7 +40,25 @@ module ex_mem_reg import common::*;(
             out_rd_o     <= '0;
             out_wen_o    <= 1'b0;
             out_trap_o   <= 1'b0;
+            out_is_load_o <= 1'b0;
+            out_is_store_o <= 1'b0;
+            out_mem_unsigned_o <= 1'b0;
+            out_mem_size_o <= MSIZE8;
+            out_store_data_o <= '0;
             out_result_o <= '0;
+        end else if (stall_i) begin
+            out_valid_o  <= out_valid_o;
+            out_pc_o     <= out_pc_o;
+            out_instr_o  <= out_instr_o;
+            out_rd_o     <= out_rd_o;
+            out_wen_o    <= out_wen_o;
+            out_trap_o   <= out_trap_o;
+            out_is_load_o <= out_is_load_o;
+            out_is_store_o <= out_is_store_o;
+            out_mem_unsigned_o <= out_mem_unsigned_o;
+            out_mem_size_o <= out_mem_size_o;
+            out_store_data_o <= out_store_data_o;
+            out_result_o <= out_result_o;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -37,6 +66,11 @@ module ex_mem_reg import common::*;(
             out_rd_o     <= in_rd_i;
             out_wen_o    <= in_wen_i;
             out_trap_o   <= in_trap_i;
+            out_is_load_o <= in_is_load_i;
+            out_is_store_o <= in_is_store_i;
+            out_mem_unsigned_o <= in_mem_unsigned_i;
+            out_mem_size_o <= in_mem_size_i;
+            out_store_data_o <= in_store_data_i;
             out_result_o <= in_result_i;
         end
     end

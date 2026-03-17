@@ -6,6 +6,7 @@ module id_ex_reg import common::*;(
     input  logic  clk,
     input  logic  reset,
     input  logic  flush_i,
+    input  logic  stall_i,
     input  logic  in_valid_i,
     input  word_t in_pc_i,
     input  u32    in_instr_i,
@@ -13,6 +14,10 @@ module id_ex_reg import common::*;(
     input  logic  in_wen_i,
     input  logic  in_trap_i,
     input  logic  in_use_imm_i,
+    input  logic  in_is_load_i,
+    input  logic  in_is_store_i,
+    input  logic  in_mem_unsigned_i,
+    input  msize_t in_mem_size_i,
     input  logic  in_is_word_i,
     input  u3     in_alu_op_i,
     input  word_t in_imm_i,
@@ -25,6 +30,10 @@ module id_ex_reg import common::*;(
     output logic  out_wen_o,
     output logic  out_trap_o,
     output logic  out_use_imm_o,
+    output logic  out_is_load_o,
+    output logic  out_is_store_o,
+    output logic  out_mem_unsigned_o,
+    output msize_t out_mem_size_o,
     output logic  out_is_word_o,
     output u3     out_alu_op_o,
     output word_t out_imm_o,
@@ -40,11 +49,32 @@ module id_ex_reg import common::*;(
             out_wen_o     <= 1'b0;
             out_trap_o    <= 1'b0;
             out_use_imm_o <= 1'b0;
+            out_is_load_o <= 1'b0;
+            out_is_store_o <= 1'b0;
+            out_mem_unsigned_o <= 1'b0;
+            out_mem_size_o <= MSIZE8;
             out_is_word_o <= 1'b0;
             out_alu_op_o  <= '0;
             out_imm_o     <= '0;
             out_op1_o     <= '0;
             out_op2_o     <= '0;
+        end else if (stall_i) begin
+            out_valid_o   <= out_valid_o;
+            out_pc_o      <= out_pc_o;
+            out_instr_o   <= out_instr_o;
+            out_rd_o      <= out_rd_o;
+            out_wen_o     <= out_wen_o;
+            out_trap_o    <= out_trap_o;
+            out_use_imm_o <= out_use_imm_o;
+            out_is_load_o <= out_is_load_o;
+            out_is_store_o <= out_is_store_o;
+            out_mem_unsigned_o <= out_mem_unsigned_o;
+            out_mem_size_o <= out_mem_size_o;
+            out_is_word_o <= out_is_word_o;
+            out_alu_op_o  <= out_alu_op_o;
+            out_imm_o     <= out_imm_o;
+            out_op1_o     <= out_op1_o;
+            out_op2_o     <= out_op2_o;
         end else begin
             out_valid_o   <= in_valid_i;
             out_pc_o      <= in_pc_i;
@@ -53,6 +83,10 @@ module id_ex_reg import common::*;(
             out_wen_o     <= in_wen_i;
             out_trap_o    <= in_trap_i;
             out_use_imm_o <= in_use_imm_i;
+            out_is_load_o <= in_is_load_i;
+            out_is_store_o <= in_is_store_i;
+            out_mem_unsigned_o <= in_mem_unsigned_i;
+            out_mem_size_o <= in_mem_size_i;
             out_is_word_o <= in_is_word_i;
             out_alu_op_o  <= in_alu_op_i;
             out_imm_o     <= in_imm_i;

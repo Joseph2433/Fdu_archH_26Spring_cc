@@ -68,6 +68,10 @@ module core import common::*;(
     logic  id_wen;  
     logic  id_trap; 
     logic  id_use_imm; 
+    logic  id_is_load;
+    logic  id_is_store;
+    logic  id_mem_unsigned;
+    msize_t id_mem_size;
     logic  id_is_word;
     u3     id_alu_op;
     word_t id_imm;
@@ -84,6 +88,10 @@ module core import common::*;(
     logic  id_ex_wen;
     logic  id_ex_trap;
     logic  id_ex_use_imm;
+    logic  id_ex_is_load;
+    logic  id_ex_is_store;
+    logic  id_ex_mem_unsigned;
+    msize_t id_ex_mem_size;
     logic  id_ex_is_word;
     u3     id_ex_alu_op;
     word_t id_ex_imm;
@@ -99,9 +107,32 @@ module core import common::*;(
     u5     ex_mem_rd;
     logic  ex_mem_wen;
     logic  ex_mem_trap;
+    logic  ex_mem_is_load;
+    logic  ex_mem_is_store;
+    logic  ex_mem_mem_unsigned;
+    msize_t ex_mem_mem_size;
+    word_t ex_mem_store_data;
     word_t ex_mem_result;
 
+    logic  mem_valid;
     word_t mem_result;
+    logic  mem_stall;
+    logic  mem_store_event_valid;
+    word_t mem_store_event_addr;
+    word_t mem_store_event_data;
+    u8     mem_store_event_mask;
+    logic  wb_store_event_valid;
+    word_t wb_store_event_addr;
+    word_t wb_store_event_data;
+    u8     wb_store_event_mask;
+    logic  diff_store_event_valid;
+    word_t diff_store_event_addr;
+    word_t diff_store_event_data;
+    u8     diff_store_event_mask;
+    logic  diff_store_event_valid_d1;
+    word_t diff_store_event_addr_d1;
+    word_t diff_store_event_data_d1;
+    u8     diff_store_event_mask_d1;
 
     // MEM/WB pipeline register.
     logic  mem_wb_valid;
@@ -127,7 +158,7 @@ module core import common::*;(
     if_stage u_if_stage(
         .clk          (clk),
         .reset        (reset),
-        .halt_i       (halt_q || stop_fetch_q),
+        .halt_i       (halt_q || stop_fetch_q || mem_stall),
         .drop_resp_i  (stop_fetch_q),
         .ireq_o       (ireq),
         .iresp_i      (iresp),
@@ -140,6 +171,7 @@ module core import common::*;(
         .clk        (clk),
         .reset      (reset),
         .flush_i    (flush_all || stop_fetch_q),
+        .stall_i    (mem_stall),
         .in_valid_i (if_fetch_valid && !stop_fetch_q),
         .in_pc_i    (if_fetch_pc),
         .in_instr_i (if_fetch_instr),
@@ -165,7 +197,7 @@ module core import common::*;(
         .instr_i          (if_id_instr),
         .rs1_val_i        (rs1_val),
         .rs2_val_i        (rs2_val),
-        .ex_bypass_en_i   (ex_mem_valid && ex_mem_wen),
+        .ex_bypass_en_i   (ex_mem_valid && ex_mem_wen && !ex_mem_is_load),
         .ex_bypass_rd_i   (ex_mem_rd),
         .ex_bypass_data_i (ex_mem_result),
         .mem_bypass_en_i  (mem_wb_valid && mem_wb_wen),
@@ -177,6 +209,10 @@ module core import common::*;(
         .wen_o            (id_wen),
         .trap_o           (id_trap),
         .use_imm_o        (id_use_imm),
+        .is_load_o        (id_is_load),
+        .is_store_o       (id_is_store),
+        .mem_unsigned_o   (id_mem_unsigned),
+        .mem_size_o       (id_mem_size),
         .is_word_o        (id_is_word),
         .alu_op_o         (id_alu_op),
         .imm_o            (id_imm),
@@ -188,6 +224,7 @@ module core import common::*;(
         .clk          (clk),
         .reset        (reset),
         .flush_i      (flush_all),
+        .stall_i      (mem_stall),
         .in_valid_i   (if_id_valid),
         .in_pc_i      (if_id_pc),
         .in_instr_i   (if_id_instr),
@@ -195,6 +232,10 @@ module core import common::*;(
         .in_wen_i     (id_wen),
         .in_trap_i    (id_trap),
         .in_use_imm_i (id_use_imm),
+        .in_is_load_i (id_is_load),
+        .in_is_store_i(id_is_store),
+        .in_mem_unsigned_i(id_mem_unsigned),
+        .in_mem_size_i(id_mem_size),
         .in_is_word_i (id_is_word),
         .in_alu_op_i  (id_alu_op),
         .in_imm_i     (id_imm),
@@ -207,6 +248,10 @@ module core import common::*;(
         .out_wen_o    (id_ex_wen),
         .out_trap_o   (id_ex_trap),
         .out_use_imm_o(id_ex_use_imm),
+        .out_is_load_o(id_ex_is_load),
+        .out_is_store_o(id_ex_is_store),
+        .out_mem_unsigned_o(id_ex_mem_unsigned),
+        .out_mem_size_o(id_ex_mem_size),
         .out_is_word_o(id_ex_is_word),
         .out_alu_op_o (id_ex_alu_op),
         .out_imm_o    (id_ex_imm),
@@ -228,12 +273,18 @@ module core import common::*;(
         .clk         (clk),
         .reset       (reset),
         .flush_i     (flush_all),
+        .stall_i     (mem_stall),
         .in_valid_i  (id_ex_valid),
         .in_pc_i     (id_ex_pc),
         .in_instr_i  (id_ex_instr),
         .in_rd_i     (id_ex_rd),
         .in_wen_i    (id_ex_wen),
         .in_trap_i   (id_ex_trap),
+        .in_is_load_i(id_ex_is_load),
+        .in_is_store_i(id_ex_is_store),
+        .in_mem_unsigned_i(id_ex_mem_unsigned),
+        .in_mem_size_i(id_ex_mem_size),
+        .in_store_data_i(id_ex_op2),
         .in_result_i (ex_result),
         .out_valid_o (ex_mem_valid),
         .out_pc_o    (ex_mem_pc),
@@ -241,11 +292,33 @@ module core import common::*;(
         .out_rd_o    (ex_mem_rd),
         .out_wen_o   (ex_mem_wen),
         .out_trap_o  (ex_mem_trap),
+        .out_is_load_o(ex_mem_is_load),
+        .out_is_store_o(ex_mem_is_store),
+        .out_mem_unsigned_o(ex_mem_mem_unsigned),
+        .out_mem_size_o(ex_mem_mem_size),
+        .out_store_data_o(ex_mem_store_data),
         .out_result_o(ex_mem_result)
     );
 
     mem_stage u_mem_stage(
+        .clk          (clk),
+        .reset        (reset),
+        .flush_i      (flush_all),
+        .valid_i      (ex_mem_valid),
         .ex_result_i  (ex_mem_result),
+        .store_data_i (ex_mem_store_data),
+        .is_load_i    (ex_mem_is_load),
+        .is_store_i   (ex_mem_is_store),
+        .mem_unsigned_i(ex_mem_mem_unsigned),
+        .mem_size_i   (ex_mem_mem_size),
+        .dresp_i      (dresp),
+        .dreq_o       (dreq),
+        .stall_o      (mem_stall),
+        .mem_valid_o  (mem_valid),
+        .store_event_valid_o(mem_store_event_valid),
+        .store_event_addr_o(mem_store_event_addr),
+        .store_event_data_o(mem_store_event_data),
+        .store_event_mask_o(mem_store_event_mask),
         .mem_result_o (mem_result)
     );
 
@@ -253,20 +326,28 @@ module core import common::*;(
         .clk         (clk),
         .reset       (reset),
         .flush_i     (flush_all),
-        .in_valid_i  (ex_mem_valid),
+        .in_valid_i  (mem_valid),
         .in_pc_i     (ex_mem_pc),
         .in_instr_i  (ex_mem_instr),
         .in_rd_i     (ex_mem_rd),
         .in_wen_i    (ex_mem_wen),
         .in_trap_i   (ex_mem_trap),
         .in_result_i (mem_result),
+        .in_store_valid_i(mem_store_event_valid),
+        .in_store_addr_i(mem_store_event_addr),
+        .in_store_data_i(mem_store_event_data),
+        .in_store_mask_i(mem_store_event_mask),
         .out_valid_o (mem_wb_valid),
         .out_pc_o    (mem_wb_pc),
         .out_instr_o (mem_wb_instr),
         .out_rd_o    (mem_wb_rd),
         .out_wen_o   (mem_wb_wen),
         .out_trap_o  (mem_wb_trap),
-        .out_result_o(mem_wb_result)
+        .out_result_o(mem_wb_result),
+        .out_store_valid_o(wb_store_event_valid),
+        .out_store_addr_o(wb_store_event_addr),
+        .out_store_data_o(wb_store_event_data),
+        .out_store_mask_o(wb_store_event_mask)
     );
 
     wb_stage u_wb_stage(
@@ -282,8 +363,7 @@ module core import common::*;(
         .commit_wen_o  (wb_commit_wen)
     );
 
-    assign dreq = '0;
-    `UNUSED_OK({dresp, trint, swint, exint});
+    `UNUSED_OK({trint, swint, exint, mem_store_event_valid, mem_store_event_addr, mem_store_event_data, mem_store_event_mask});
 
     // Update commit/trap state after the WB stage becomes architecturally visible.
     always_ff @(posedge clk) begin
@@ -301,6 +381,14 @@ module core import common::*;(
             commit_wen_q   <= 1'b0;
             commit_wdest_q <= '0;
             commit_wdata_q <= '0;
+            diff_store_event_valid    <= 1'b0;
+            diff_store_event_addr     <= '0;
+            diff_store_event_data     <= '0;
+            diff_store_event_mask     <= '0;
+            diff_store_event_valid_d1 <= 1'b0;
+            diff_store_event_addr_d1  <= '0;
+            diff_store_event_data_d1  <= '0;
+            diff_store_event_mask_d1  <= '0;
         end else begin
             cycle_cnt_q    <= cycle_cnt_q + 64'd1;
             trap_valid_q   <= 1'b0;
@@ -310,6 +398,14 @@ module core import common::*;(
             commit_wen_q   <= wb_commit_wen;
             commit_wdest_q <= mem_wb_rd;
             commit_wdata_q <= mem_wb_result;
+            diff_store_event_valid    <= wb_store_event_valid;
+            diff_store_event_addr     <= wb_store_event_addr;
+            diff_store_event_data     <= wb_store_event_data;
+            diff_store_event_mask     <= wb_store_event_mask;
+            diff_store_event_valid_d1 <= diff_store_event_valid;
+            diff_store_event_addr_d1  <= diff_store_event_addr;
+            diff_store_event_data_d1  <= diff_store_event_data;
+            diff_store_event_mask_d1  <= diff_store_event_mask;
 
             if (wb_commit_valid) begin
                 instr_cnt_q <= instr_cnt_q + 64'd1;
@@ -342,6 +438,16 @@ module core import common::*;(
         .wen                (commit_wen_q),
         .wdest              ({3'b0, commit_wdest_q}),
         .wdata              (commit_wdata_q)
+    );
+
+    DifftestStoreEvent DifftestStoreEvent(
+        .clock              (clk),
+        .coreid             (0),
+        .index              (0),
+        .valid              (diff_store_event_valid_d1),
+        .storeAddr          (diff_store_event_addr_d1),
+        .storeData          (diff_store_event_data_d1),
+        .storeMask          (diff_store_event_mask_d1)
     );
 
     DifftestArchIntRegState DifftestArchIntRegState(

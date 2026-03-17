@@ -10,9 +10,14 @@ module decoder import common::*;(
 	output logic  wen_o,
 	output logic  trap_o,
 	output logic  use_imm_o,
+	output logic  op1_zero_o,
 	output logic  is_word_o,
 	output u3     alu_op_o,
 	output word_t imm_o,
+	output logic  is_load_o,
+	output logic  is_store_o,
+	output logic  mem_unsigned_o,
+	output msize_t mem_size_o,
 	output logic  rs1_used_o,
 	output logic  rs2_used_o,
 	output logic  funct7_sub_o
@@ -21,6 +26,8 @@ module decoder import common::*;(
 	u3 funct3;
 	u7 funct7;
 	word_t imm_i;
+	word_t imm_s;
+	word_t imm_u;
 
 	// Common instruction fields used by all supported formats.
 	assign opcode    = instr_i[6:0];
@@ -30,7 +37,8 @@ module decoder import common::*;(
 	assign rs2_o     = instr_i[24:20];
 	assign rd_o      = instr_i[11:7];
 	assign imm_i     = {{52{instr_i[31]}}, instr_i[31:20]};
-	assign imm_o     = imm_i;
+	assign imm_s     = {{52{instr_i[31]}}, instr_i[31:25], instr_i[11:7]};
+	assign imm_u     = {{32{instr_i[31]}}, instr_i[31:12], 12'b0};
 	assign funct7_sub_o = funct7[5];
 
 	always_comb begin
@@ -38,8 +46,14 @@ module decoder import common::*;(
 		wen_o       = 1'b0;
 		trap_o      = 1'b0;
 		use_imm_o   = 1'b0;
+		op1_zero_o  = 1'b0;
 		is_word_o   = 1'b0;
 		alu_op_o    = 3'b000;
+		imm_o       = imm_i;
+		is_load_o   = 1'b0;
+		is_store_o  = 1'b0;
+		mem_unsigned_o = 1'b0;
+		mem_size_o  = MSIZE8;
 		rs1_used_o  = 1'b0;
 		rs2_used_o  = 1'b0;
 
@@ -48,6 +62,7 @@ module decoder import common::*;(
 			7'b0010011: begin
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
+				imm_o      = imm_i;
 				rs1_used_o = 1'b1;
 				unique case (funct3)
 					3'b000: alu_op_o = 3'b000; // addi
@@ -78,6 +93,7 @@ module decoder import common::*;(
 			7'b0011011: begin
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
+				imm_o      = imm_i;
 				is_word_o  = 1'b1;
 				rs1_used_o = 1'b1;
 				if (funct3 == 3'b000) begin
@@ -97,6 +113,54 @@ module decoder import common::*;(
 				end else begin
 					wen_o = 1'b0;
 				end
+			end
+			// 0110111: LUI
+			7'b0110111: begin
+				wen_o      = 1'b1;
+				use_imm_o  = 1'b1;
+				op1_zero_o = 1'b1;
+				imm_o      = imm_u;
+				alu_op_o   = 3'b000;
+			end
+			// 0000011: LOAD
+			7'b0000011: begin
+				wen_o      = 1'b1;
+				use_imm_o  = 1'b1;
+				imm_o      = imm_i;
+				is_load_o  = 1'b1;
+				rs1_used_o = 1'b1;
+				alu_op_o   = 3'b000;
+				unique case (funct3)
+					3'b000: begin mem_size_o = MSIZE1; mem_unsigned_o = 1'b0; end // lb
+					3'b001: begin mem_size_o = MSIZE2; mem_unsigned_o = 1'b0; end // lh
+					3'b010: begin mem_size_o = MSIZE4; mem_unsigned_o = 1'b0; end // lw
+					3'b011: begin mem_size_o = MSIZE8; mem_unsigned_o = 1'b0; end // ld
+					3'b100: begin mem_size_o = MSIZE1; mem_unsigned_o = 1'b1; end // lbu
+					3'b101: begin mem_size_o = MSIZE2; mem_unsigned_o = 1'b1; end // lhu
+					3'b110: begin mem_size_o = MSIZE4; mem_unsigned_o = 1'b1; end // lwu
+					default: begin
+						wen_o = 1'b0;
+						is_load_o = 1'b0;
+					end
+				endcase
+			end
+			// 0100011: STORE
+			7'b0100011: begin
+				use_imm_o  = 1'b1;
+				imm_o      = imm_s;
+				is_store_o = 1'b1;
+				rs1_used_o = 1'b1;
+				rs2_used_o = 1'b1;
+				alu_op_o   = 3'b000;
+				unique case (funct3)
+					3'b000: mem_size_o = MSIZE1; // sb
+					3'b001: mem_size_o = MSIZE2; // sh
+					3'b010: mem_size_o = MSIZE4; // sw
+					3'b011: mem_size_o = MSIZE8; // sd
+					default: begin
+						is_store_o = 1'b0;
+					end
+				endcase
 			end
 			// 1101011: custom trap instruction (0x0005006b in lab test image)
 			7'b1101011: begin

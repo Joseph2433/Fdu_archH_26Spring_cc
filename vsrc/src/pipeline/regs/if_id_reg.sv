@@ -6,6 +6,7 @@ module if_id_reg import common::*;(
     input  logic  clk,
     input  logic  reset,
     input  logic  flush_i,
+    input  logic  stall_i,
     input  logic  in_valid_i,
     input  word_t in_pc_i,
     input  u32    in_instr_i,
@@ -19,6 +20,10 @@ module if_id_reg import common::*;(
             out_valid_o <= 1'b0;
             out_pc_o    <= '0;
             out_instr_o <= '0;
+        end else if (stall_i) begin
+            out_valid_o <= out_valid_o;
+            out_pc_o    <= out_pc_o;
+            out_instr_o <= out_instr_o;
         end else begin
             out_valid_o <= in_valid_i;
             out_pc_o    <= in_pc_i;
