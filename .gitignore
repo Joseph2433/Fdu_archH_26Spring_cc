@@ -1,0 +1,16 @@
+
+!.gitignore 
+*.zip
+*.rar
+*.7z
+
+26-Arch/
+教学PPT/
+lab1-report/
+lab2-report/
+lab3/
+lab3-report/
+MIPS处理器实验PPT/
+
+.DS_Store
+.vscode/
