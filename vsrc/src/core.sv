@@ -5,17 +5,7 @@
 `include "include/common.sv"
 `endif
 
-`include "src/pipeline/units/decoder/decoder.sv"
-`include "src/pipeline/units/regfile/regfile.sv"
-`include "src/pipeline/stages/if_stage.sv"
-`include "src/pipeline/stages/id_stage.sv"
-`include "src/pipeline/stages/ex_stage.sv"
-`include "src/pipeline/stages/mem_stage.sv"
-`include "src/pipeline/stages/wb_stage.sv"
-`include "src/pipeline/regs/if_id_reg.sv"
-`include "src/pipeline/regs/id_ex_reg.sv"
-`include "src/pipeline/regs/ex_mem_reg.sv"
-`include "src/pipeline/regs/mem_wb_reg.sv"
+
 
 module core import common::*;(
     input  logic       clk,
@@ -70,13 +60,19 @@ module core import common::*;(
     logic  id_use_imm; 
     logic  id_is_load;
     logic  id_is_store;
+    logic  id_is_branch;
+    logic  id_is_jal;
+    logic  id_is_jalr;
+    u3     id_branch_funct3;
     logic  id_mem_unsigned;
     msize_t id_mem_size;
     logic  id_is_word;
-    u3     id_alu_op;
+    u5     id_alu_op;
     word_t id_imm;
     word_t id_op1;
     word_t id_op2;
+    logic  id_rs1_used;
+    logic  id_rs2_used;
     word_t rs1_val;
     word_t rs2_val;
 
@@ -90,15 +86,25 @@ module core import common::*;(
     logic  id_ex_use_imm;
     logic  id_ex_is_load;
     logic  id_ex_is_store;
+    logic  id_ex_is_branch;
+    logic  id_ex_is_jal;
+    logic  id_ex_is_jalr;
+    u3     id_ex_branch_funct3;
     logic  id_ex_mem_unsigned;
     msize_t id_ex_mem_size;
     logic  id_ex_is_word;
-    u3     id_ex_alu_op;
+    u5     id_ex_alu_op;
     word_t id_ex_imm;
     word_t id_ex_op1;
     word_t id_ex_op2;
 
     word_t ex_result;
+    logic  ex_result_valid;
+    logic  ex_stall;
+    logic  front_stall;
+    logic  ex_redirect_valid;
+    logic  ex_redirect_fire;
+    word_t ex_redirect_pc;
 
     // EX/MEM pipeline register.
     logic  ex_mem_valid;
@@ -141,6 +147,8 @@ module core import common::*;(
     u5     mem_wb_rd;
     logic  mem_wb_wen;
     logic  mem_wb_trap;
+    logic  mem_wb_is_mem;
+    word_t mem_wb_mem_addr;
     word_t mem_wb_result;
 
     logic  wb_rf_wen;
@@ -148,17 +156,25 @@ module core import common::*;(
     word_t wb_rf_wdata;
     logic  wb_commit_valid;
     logic  wb_commit_wen;
+    logic  commit_skip_q;
+    logic  load_use_hazard;
 
     logic flush_all;
 
     // Trap commits flush the pipeline once they reach WB.
     assign flush_all = reset || trap_valid_q;
+    assign front_stall = mem_stall || ex_stall;
+    assign ex_redirect_fire = ex_redirect_valid && !mem_stall;
+    assign load_use_hazard = !front_stall && if_id_valid && id_ex_valid && id_ex_is_load && (id_ex_rd != '0) &&
+        ((id_rs1_used && (id_rs1 == id_ex_rd)) || (id_rs2_used && (id_rs2 == id_ex_rd)));
 
     // 5-stage datapath: IF -> ID -> EX -> MEM -> WB.
     if_stage u_if_stage(
         .clk          (clk),
         .reset        (reset),
-        .halt_i       (halt_q || stop_fetch_q || mem_stall),
+        .halt_i       (halt_q || stop_fetch_q || front_stall || load_use_hazard),
+        .redirect_i   (ex_redirect_fire),
+        .redirect_pc_i(ex_redirect_pc),
         .drop_resp_i  (stop_fetch_q),
         .ireq_o       (ireq),
         .iresp_i      (iresp),
@@ -170,8 +186,8 @@ module core import common::*;(
     if_id_reg u_if_id_reg(
         .clk        (clk),
         .reset      (reset),
-        .flush_i    (flush_all || stop_fetch_q),
-        .stall_i    (mem_stall),
+        .flush_i    (flush_all || stop_fetch_q || ex_redirect_fire),
+        .stall_i    (front_stall || load_use_hazard),
         .in_valid_i (if_fetch_valid && !stop_fetch_q),
         .in_pc_i    (if_fetch_pc),
         .in_instr_i (if_fetch_instr),
@@ -195,8 +211,12 @@ module core import common::*;(
 
     id_stage u_id_stage(
         .instr_i          (if_id_instr),
+        .pc_i             (if_id_pc),
         .rs1_val_i        (rs1_val),
         .rs2_val_i        (rs2_val),
+        .ex0_bypass_en_i  (id_ex_valid && id_ex_wen && !id_ex_is_load),
+        .ex0_bypass_rd_i  (id_ex_rd),
+        .ex0_bypass_data_i(ex_result),
         .ex_bypass_en_i   (ex_mem_valid && ex_mem_wen && !ex_mem_is_load),
         .ex_bypass_rd_i   (ex_mem_rd),
         .ex_bypass_data_i (ex_mem_result),
@@ -211,6 +231,12 @@ module core import common::*;(
         .use_imm_o        (id_use_imm),
         .is_load_o        (id_is_load),
         .is_store_o       (id_is_store),
+        .is_branch_o      (id_is_branch),
+        .is_jal_o         (id_is_jal),
+        .is_jalr_o        (id_is_jalr),
+        .branch_funct3_o  (id_branch_funct3),
+        .rs1_used_o       (id_rs1_used),
+        .rs2_used_o       (id_rs2_used),
         .mem_unsigned_o   (id_mem_unsigned),
         .mem_size_o       (id_mem_size),
         .is_word_o        (id_is_word),
@@ -223,8 +249,8 @@ module core import common::*;(
     id_ex_reg u_id_ex_reg(
         .clk          (clk),
         .reset        (reset),
-        .flush_i      (flush_all),
-        .stall_i      (mem_stall),
+        .flush_i      (flush_all || ex_redirect_fire || load_use_hazard),
+        .stall_i      (front_stall),
         .in_valid_i   (if_id_valid),
         .in_pc_i      (if_id_pc),
         .in_instr_i   (if_id_instr),
@@ -234,6 +260,10 @@ module core import common::*;(
         .in_use_imm_i (id_use_imm),
         .in_is_load_i (id_is_load),
         .in_is_store_i(id_is_store),
+        .in_is_branch_i(id_is_branch),
+        .in_is_jal_i  (id_is_jal),
+        .in_is_jalr_i (id_is_jalr),
+        .in_branch_funct3_i(id_branch_funct3),
         .in_mem_unsigned_i(id_mem_unsigned),
         .in_mem_size_i(id_mem_size),
         .in_is_word_i (id_is_word),
@@ -250,6 +280,10 @@ module core import common::*;(
         .out_use_imm_o(id_ex_use_imm),
         .out_is_load_o(id_ex_is_load),
         .out_is_store_o(id_ex_is_store),
+        .out_is_branch_o(id_ex_is_branch),
+        .out_is_jal_o (id_ex_is_jal),
+        .out_is_jalr_o(id_ex_is_jalr),
+        .out_branch_funct3_o(id_ex_branch_funct3),
         .out_mem_unsigned_o(id_ex_mem_unsigned),
         .out_mem_size_o(id_ex_mem_size),
         .out_is_word_o(id_ex_is_word),
@@ -260,13 +294,27 @@ module core import common::*;(
     );
 
     ex_stage u_ex_stage(
+        .clk       (clk),
+        .reset     (reset),
+        .flush_i   (flush_all),
+        .valid_i   (id_ex_valid),
+        .pc_i      (id_ex_pc),
         .op1_i     (id_ex_op1),
         .op2_i     (id_ex_op2),
         .imm_i     (id_ex_imm),
         .use_imm_i (id_ex_use_imm),
         .is_word_i (id_ex_is_word),
         .alu_op_i  (id_ex_alu_op),
-        .result_o  (ex_result)
+        .is_branch_i(id_ex_is_branch),
+        .is_jal_i  (id_ex_is_jal),
+        .is_jalr_i (id_ex_is_jalr),
+        .branch_funct3_i(id_ex_branch_funct3),
+        .ex_accept_i(!mem_stall),
+        .result_o  (ex_result),
+        .result_valid_o(ex_result_valid),
+        .stall_o   (ex_stall),
+        .redirect_valid_o(ex_redirect_valid),
+        .redirect_pc_o(ex_redirect_pc)
     );
 
     ex_mem_reg u_ex_mem_reg(
@@ -274,7 +322,7 @@ module core import common::*;(
         .reset       (reset),
         .flush_i     (flush_all),
         .stall_i     (mem_stall),
-        .in_valid_i  (id_ex_valid),
+        .in_valid_i  (ex_result_valid),
         .in_pc_i     (id_ex_pc),
         .in_instr_i  (id_ex_instr),
         .in_rd_i     (id_ex_rd),
@@ -332,6 +380,8 @@ module core import common::*;(
         .in_rd_i     (ex_mem_rd),
         .in_wen_i    (ex_mem_wen),
         .in_trap_i   (ex_mem_trap),
+        .in_is_mem_i (ex_mem_is_load || ex_mem_is_store),
+        .in_mem_addr_i(ex_mem_result),
         .in_result_i (mem_result),
         .in_store_valid_i(mem_store_event_valid),
         .in_store_addr_i(mem_store_event_addr),
@@ -343,6 +393,8 @@ module core import common::*;(
         .out_rd_o    (mem_wb_rd),
         .out_wen_o   (mem_wb_wen),
         .out_trap_o  (mem_wb_trap),
+        .out_is_mem_o(mem_wb_is_mem),
+        .out_mem_addr_o(mem_wb_mem_addr),
         .out_result_o(mem_wb_result),
         .out_store_valid_o(wb_store_event_valid),
         .out_store_addr_o(wb_store_event_addr),
@@ -381,6 +433,7 @@ module core import common::*;(
             commit_wen_q   <= 1'b0;
             commit_wdest_q <= '0;
             commit_wdata_q <= '0;
+            commit_skip_q  <= 1'b0;
             diff_store_event_valid    <= 1'b0;
             diff_store_event_addr     <= '0;
             diff_store_event_data     <= '0;
@@ -398,7 +451,8 @@ module core import common::*;(
             commit_wen_q   <= wb_commit_wen;
             commit_wdest_q <= mem_wb_rd;
             commit_wdata_q <= mem_wb_result;
-            diff_store_event_valid    <= wb_store_event_valid;
+            commit_skip_q  <= mem_wb_is_mem && (mem_wb_mem_addr[31] == 1'b0);
+            diff_store_event_valid    <= wb_store_event_valid && (wb_store_event_addr[31] == 1'b1);
             diff_store_event_addr     <= wb_store_event_addr;
             diff_store_event_data     <= wb_store_event_data;
             diff_store_event_mask     <= wb_store_event_mask;
@@ -432,7 +486,7 @@ module core import common::*;(
         .valid              (commit_valid_q),
         .pc                 (commit_pc_q),
         .instr              (commit_instr_q),
-        .skip               (0),
+        .skip               (commit_skip_q),
         .isRVC              (0),
         .scFailed           (0),
         .wen                (commit_wen_q),

@@ -28,8 +28,8 @@ module CBusArbiter
     int index, select;
     cbus_req_t saved_req, selected_req;
 
-    // assign oreq = ireqs[index];
-    assign oreq = busy ? ireqs[index] : '0;  // prevent early issue
+    // Keep request fields stable during an in-flight transaction.
+    assign oreq = busy ? saved_req : '0;
     assign selected_req = ireqs[select];
 
     // select a preferred request

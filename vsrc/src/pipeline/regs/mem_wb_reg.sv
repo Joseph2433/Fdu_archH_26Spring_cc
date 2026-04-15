@@ -12,6 +12,8 @@ module mem_wb_reg import common::*;(
     input  u5     in_rd_i,
     input  logic  in_wen_i,
     input  logic  in_trap_i,
+    input  logic  in_is_mem_i,
+    input  word_t in_mem_addr_i,
     input  word_t in_result_i,
     input  logic  in_store_valid_i,
     input  word_t in_store_addr_i,
@@ -23,6 +25,8 @@ module mem_wb_reg import common::*;(
     output u5     out_rd_o,
     output logic  out_wen_o,
     output logic  out_trap_o,
+    output logic  out_is_mem_o,
+    output word_t out_mem_addr_o,
     output word_t out_result_o,
     output logic  out_store_valid_o,
     output word_t out_store_addr_o,
@@ -37,6 +41,8 @@ module mem_wb_reg import common::*;(
             out_rd_o     <= '0;
             out_wen_o    <= 1'b0;
             out_trap_o   <= 1'b0;
+            out_is_mem_o <= 1'b0;
+            out_mem_addr_o <= '0;
             out_result_o <= '0;
             out_store_valid_o <= 1'b0;
             out_store_addr_o  <= '0;
@@ -49,6 +55,8 @@ module mem_wb_reg import common::*;(
             out_rd_o     <= in_rd_i;
             out_wen_o    <= in_wen_i;
             out_trap_o   <= in_trap_i;
+            out_is_mem_o <= in_is_mem_i;
+            out_mem_addr_o <= in_mem_addr_i;
             out_result_o <= in_result_i;
             out_store_valid_o <= in_store_valid_i;
             out_store_addr_o  <= in_store_addr_i;

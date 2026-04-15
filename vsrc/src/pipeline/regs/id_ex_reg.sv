@@ -16,10 +16,14 @@ module id_ex_reg import common::*;(
     input  logic  in_use_imm_i,
     input  logic  in_is_load_i,
     input  logic  in_is_store_i,
+    input  logic  in_is_branch_i,
+    input  logic  in_is_jal_i,
+    input  logic  in_is_jalr_i,
+    input  u3     in_branch_funct3_i,
     input  logic  in_mem_unsigned_i,
     input  msize_t in_mem_size_i,
     input  logic  in_is_word_i,
-    input  u3     in_alu_op_i,
+    input  u5     in_alu_op_i,
     input  word_t in_imm_i,
     input  word_t in_op1_i,
     input  word_t in_op2_i,
@@ -32,10 +36,14 @@ module id_ex_reg import common::*;(
     output logic  out_use_imm_o,
     output logic  out_is_load_o,
     output logic  out_is_store_o,
+    output logic  out_is_branch_o,
+    output logic  out_is_jal_o,
+    output logic  out_is_jalr_o,
+    output u3     out_branch_funct3_o,
     output logic  out_mem_unsigned_o,
     output msize_t out_mem_size_o,
     output logic  out_is_word_o,
-    output u3     out_alu_op_o,
+    output u5     out_alu_op_o,
     output word_t out_imm_o,
     output word_t out_op1_o,
     output word_t out_op2_o
@@ -51,6 +59,10 @@ module id_ex_reg import common::*;(
             out_use_imm_o <= 1'b0;
             out_is_load_o <= 1'b0;
             out_is_store_o <= 1'b0;
+            out_is_branch_o <= 1'b0;
+            out_is_jal_o <= 1'b0;
+            out_is_jalr_o <= 1'b0;
+            out_branch_funct3_o <= '0;
             out_mem_unsigned_o <= 1'b0;
             out_mem_size_o <= MSIZE8;
             out_is_word_o <= 1'b0;
@@ -68,6 +80,10 @@ module id_ex_reg import common::*;(
             out_use_imm_o <= out_use_imm_o;
             out_is_load_o <= out_is_load_o;
             out_is_store_o <= out_is_store_o;
+            out_is_branch_o <= out_is_branch_o;
+            out_is_jal_o <= out_is_jal_o;
+            out_is_jalr_o <= out_is_jalr_o;
+            out_branch_funct3_o <= out_branch_funct3_o;
             out_mem_unsigned_o <= out_mem_unsigned_o;
             out_mem_size_o <= out_mem_size_o;
             out_is_word_o <= out_is_word_o;
@@ -85,6 +101,10 @@ module id_ex_reg import common::*;(
             out_use_imm_o <= in_use_imm_i;
             out_is_load_o <= in_is_load_i;
             out_is_store_o <= in_is_store_i;
+            out_is_branch_o <= in_is_branch_i;
+            out_is_jal_o <= in_is_jal_i;
+            out_is_jalr_o <= in_is_jalr_i;
+            out_branch_funct3_o <= in_branch_funct3_i;
             out_mem_unsigned_o <= in_mem_unsigned_i;
             out_mem_size_o <= in_mem_size_i;
             out_is_word_o <= in_is_word_i;

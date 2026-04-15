@@ -4,8 +4,12 @@
 // ID stage: decode control signals and select operands with simple bypassing.
 module id_stage import common::*;(
     input  u32    instr_i,
+    input  word_t pc_i,
     input  word_t rs1_val_i,
     input  word_t rs2_val_i,
+    input  logic  ex0_bypass_en_i,
+    input  u5     ex0_bypass_rd_i,
+    input  word_t ex0_bypass_data_i,
     input  logic  ex_bypass_en_i,
     input  u5     ex_bypass_rd_i,
     input  word_t ex_bypass_data_i,
@@ -23,7 +27,13 @@ module id_stage import common::*;(
     output logic  mem_unsigned_o,
     output msize_t mem_size_o,
     output logic  is_word_o,
-    output u3     alu_op_o,
+    output u5     alu_op_o,
+    output logic  is_branch_o,
+    output logic  is_jal_o,
+    output logic  is_jalr_o,
+    output u3     branch_funct3_o,
+    output logic  rs1_used_o,
+    output logic  rs2_used_o,
     output word_t imm_o,
     output word_t op1_o,
     output word_t op2_o
@@ -32,6 +42,7 @@ module id_stage import common::*;(
     logic rs2_used;
     logic funct7_sub;
     logic op1_zero;
+    logic op1_pc;
 
     // Decoder translates the raw instruction into pipeline control.
     decoder u_decoder(
@@ -43,15 +54,20 @@ module id_stage import common::*;(
         .trap_o       (trap_o),
         .use_imm_o    (use_imm_o),
         .op1_zero_o   (op1_zero),
+        .op1_pc_o     (op1_pc),
         .is_word_o    (is_word_o),
         .alu_op_o     (alu_op_o),
         .imm_o        (imm_o),
         .is_load_o    (is_load_o),
         .is_store_o   (is_store_o),
+        .is_branch_o  (is_branch_o),
+        .is_jal_o     (is_jal_o),
+        .is_jalr_o    (is_jalr_o),
+        .branch_funct3_o(branch_funct3_o),
         .mem_unsigned_o(mem_unsigned_o),
         .mem_size_o   (mem_size_o),
-        .rs1_used_o   (rs1_used),
-        .rs2_used_o   (rs2_used),
+        .rs1_used_o   (rs1_used_o),
+        .rs2_used_o   (rs2_used_o),
         .funct7_sub_o (funct7_sub)
     );
 
@@ -61,16 +77,24 @@ module id_stage import common::*;(
         op2_o = rs2_val_i;
 
 		// EX/MEM has higher priority than MEM/WB because it is newer data.
-        if (rs1_used && ex_bypass_en_i && (ex_bypass_rd_i == rs1_o) && (rs1_o != '0)) begin
+        if (rs1_used_o && ex0_bypass_en_i && (ex0_bypass_rd_i == rs1_o) && (rs1_o != '0)) begin
+            op1_o = ex0_bypass_data_i;
+        end else if (rs1_used_o && ex_bypass_en_i && (ex_bypass_rd_i == rs1_o) && (rs1_o != '0)) begin
             op1_o = ex_bypass_data_i;
-        end else if (rs1_used && mem_bypass_en_i && (mem_bypass_rd_i == rs1_o) && (rs1_o != '0)) begin
+        end else if (rs1_used_o && mem_bypass_en_i && (mem_bypass_rd_i == rs1_o) && (rs1_o != '0)) begin
             op1_o = mem_bypass_data_i;
         end
 
-        if (rs2_used && ex_bypass_en_i && (ex_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
+        if (rs2_used_o && ex0_bypass_en_i && (ex0_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
+            op2_o = ex0_bypass_data_i;
+        end else if (rs2_used_o && ex_bypass_en_i && (ex_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
             op2_o = ex_bypass_data_i;
-        end else if (rs2_used && mem_bypass_en_i && (mem_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
+        end else if (rs2_used_o && mem_bypass_en_i && (mem_bypass_rd_i == rs2_o) && (rs2_o != '0)) begin
             op2_o = mem_bypass_data_i;
+        end
+
+        if (op1_pc) begin
+            op1_o = pc_i;
         end
 
         if (op1_zero) begin

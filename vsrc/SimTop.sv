@@ -34,7 +34,14 @@ module SimTop import common::*;(
       .clk(clock), .reset, .ireq, .iresp, .dreq, .dresp, .trint, .swint, .exint
     );
 
-    IBusToCBus icvt(.*);
+    IBusToCBus icvt(
+      .clk(clock),
+      .reset(reset),
+      .ireq(ireq),
+      .iresp(iresp),
+      .icreq(icreq),
+      .icresp(icresp)
+    );
     DBusToCBus dcvt(.*);
     CBusArbiter mux(
         .clk(clock), .reset,
