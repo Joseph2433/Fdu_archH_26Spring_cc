@@ -3,14 +3,16 @@
 *.zip
 *.rar
 *.7z
+*.docx
 
-26-Arch/
+26-Arch/*
 教学PPT/
 lab1-report/
 lab2-report/
 lab3/
 lab3-report/
 MIPS处理器实验PPT/
-
+test2/
 .DS_Store
 .vscode/
+lab4-report/

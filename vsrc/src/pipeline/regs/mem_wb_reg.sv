@@ -19,6 +19,9 @@ module mem_wb_reg import common::*;(
     input  word_t in_store_addr_i,
     input  word_t in_store_data_i,
     input  u8     in_store_mask_i,
+    input  logic  in_csr_wen_i,
+    input  u12    in_csr_addr_i,
+    input  word_t in_csr_wdata_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
     output u32    out_instr_o,
@@ -31,7 +34,10 @@ module mem_wb_reg import common::*;(
     output logic  out_store_valid_o,
     output word_t out_store_addr_o,
     output word_t out_store_data_o,
-    output u8     out_store_mask_o
+    output u8     out_store_mask_o,
+    output logic  out_csr_wen_o,
+    output u12    out_csr_addr_o,
+    output word_t out_csr_wdata_o
 );
     always_ff @(posedge clk) begin
         if (reset || flush_i) begin
@@ -48,6 +54,9 @@ module mem_wb_reg import common::*;(
             out_store_addr_o  <= '0;
             out_store_data_o  <= '0;
             out_store_mask_o  <= '0;
+            out_csr_wen_o   <= 1'b0;
+            out_csr_addr_o  <= '0;
+            out_csr_wdata_o <= '0;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -62,6 +71,9 @@ module mem_wb_reg import common::*;(
             out_store_addr_o  <= in_store_addr_i;
             out_store_data_o  <= in_store_data_i;
             out_store_mask_o  <= in_store_mask_i;
+            out_csr_wen_o   <= in_csr_wen_i;
+            out_csr_addr_o  <= in_csr_addr_i;
+            out_csr_wdata_o <= in_csr_wdata_i;
         end
     end
 endmodule

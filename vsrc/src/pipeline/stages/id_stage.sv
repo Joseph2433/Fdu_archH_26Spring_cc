@@ -36,7 +36,11 @@ module id_stage import common::*;(
     output logic  rs2_used_o,
     output word_t imm_o,
     output word_t op1_o,
-    output word_t op2_o
+    output word_t op2_o,
+    output logic  is_csr_o,
+    output u2     csr_op_o,
+    output logic  csr_use_imm_o,
+    output u12    csr_addr_o
 );
     logic rs1_used;
     logic rs2_used;
@@ -68,7 +72,11 @@ module id_stage import common::*;(
         .mem_size_o   (mem_size_o),
         .rs1_used_o   (rs1_used_o),
         .rs2_used_o   (rs2_used_o),
-        .funct7_sub_o (funct7_sub)
+        .funct7_sub_o (funct7_sub),
+        .is_csr_o     (is_csr_o),
+        .csr_op_o     (csr_op_o),
+        .csr_use_imm_o(csr_use_imm_o),
+        .csr_addr_o   (csr_addr_o)
     );
 
     always_comb begin

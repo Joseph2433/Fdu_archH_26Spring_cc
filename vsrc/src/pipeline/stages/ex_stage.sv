@@ -19,11 +19,17 @@ module ex_stage import common::*;(
     input  logic  is_jalr_i,
     input  u3     branch_funct3_i,
     input  logic  ex_accept_i,
+    input  logic  is_csr_i,
+    input  u2     csr_op_i,
+    input  logic  csr_use_imm_i,
+    input  word_t csr_rdata_i,
     output word_t result_o,
     output logic  result_valid_o,
     output logic  stall_o,
     output logic  redirect_valid_o,
-    output word_t redirect_pc_o
+    output word_t redirect_pc_o,
+    output logic  csr_wen_o,
+    output word_t csr_wdata_o
 );
     word_t rhs;
     word_t full_res;
@@ -360,6 +366,8 @@ module ex_stage import common::*;(
         branch_taken = 1'b0;
         redirect_valid_o = 1'b0;
         redirect_pc_o = '0;
+        csr_wen_o = 1'b0;
+        csr_wdata_o = '0;
 
         unique case (alu_op_i)
             ALU_ADD:  full_res = op1_i + rhs;
@@ -420,6 +428,29 @@ module ex_stage import common::*;(
             redirect_valid_o = 1'b1;
             redirect_pc_o = (op1_i + imm_i) & ~64'd1;
             result_o = pc_i + 64'd4;
+        end
+
+        // CSR instructions: rd gets the old CSR value; new CSR value is sent to WB.
+        // Always redirect to pc+4 so the pipeline behind the CSR is flushed (no
+        // forwarding allowed for CSRs; treat them as always-mispredicted jumps).
+        if (is_csr_i && valid_i) begin
+            word_t csr_src;
+            csr_src = csr_use_imm_i ? imm_i : op1_i;
+
+            unique case (csr_op_i)
+                2'b01: csr_wdata_o = csr_src;                     // CSRRW(I)
+                2'b10: csr_wdata_o = csr_rdata_i | csr_src;       // CSRRS(I)
+                2'b11: csr_wdata_o = csr_rdata_i & ~csr_src;      // CSRRC(I)
+                default: csr_wdata_o = csr_rdata_i;
+            endcase
+
+            // CSRRS/CSRRC with zero source MUST NOT trigger CSR write side effects.
+            csr_wen_o = (csr_op_i == 2'b01) || (csr_src != 64'd0);
+
+            result_o = csr_rdata_i;
+            result_valid_o = 1'b1;
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = pc_i + 64'd4;
         end
     end
 

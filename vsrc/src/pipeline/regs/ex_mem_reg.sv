@@ -19,6 +19,10 @@ module ex_mem_reg import common::*;(
     input  msize_t in_mem_size_i,
     input  word_t in_store_data_i,
     input  word_t in_result_i,
+    input  logic  in_is_csr_i,
+    input  logic  in_csr_wen_i,
+    input  u12    in_csr_addr_i,
+    input  word_t in_csr_wdata_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
     output u32    out_instr_o,
@@ -30,7 +34,11 @@ module ex_mem_reg import common::*;(
     output logic  out_mem_unsigned_o,
     output msize_t out_mem_size_o,
     output word_t out_store_data_o,
-    output word_t out_result_o
+    output word_t out_result_o,
+    output logic  out_is_csr_o,
+    output logic  out_csr_wen_o,
+    output u12    out_csr_addr_o,
+    output word_t out_csr_wdata_o
 );
     always_ff @(posedge clk) begin
         if (reset || flush_i) begin
@@ -46,6 +54,10 @@ module ex_mem_reg import common::*;(
             out_mem_size_o <= MSIZE8;
             out_store_data_o <= '0;
             out_result_o <= '0;
+            out_is_csr_o    <= 1'b0;
+            out_csr_wen_o   <= 1'b0;
+            out_csr_addr_o  <= '0;
+            out_csr_wdata_o <= '0;
         end else if (stall_i) begin
             out_valid_o  <= out_valid_o;
             out_pc_o     <= out_pc_o;
@@ -59,6 +71,10 @@ module ex_mem_reg import common::*;(
             out_mem_size_o <= out_mem_size_o;
             out_store_data_o <= out_store_data_o;
             out_result_o <= out_result_o;
+            out_is_csr_o    <= out_is_csr_o;
+            out_csr_wen_o   <= out_csr_wen_o;
+            out_csr_addr_o  <= out_csr_addr_o;
+            out_csr_wdata_o <= out_csr_wdata_o;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -72,6 +88,10 @@ module ex_mem_reg import common::*;(
             out_mem_size_o <= in_mem_size_i;
             out_store_data_o <= in_store_data_i;
             out_result_o <= in_result_i;
+            out_is_csr_o    <= in_is_csr_i;
+            out_csr_wen_o   <= in_csr_wen_i;
+            out_csr_addr_o  <= in_csr_addr_i;
+            out_csr_wdata_o <= in_csr_wdata_i;
         end
     end
 endmodule

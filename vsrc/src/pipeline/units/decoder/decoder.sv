@@ -25,7 +25,11 @@ module decoder import common::*;(
 	output msize_t mem_size_o,
 	output logic  rs1_used_o,
 	output logic  rs2_used_o,
-	output logic  funct7_sub_o
+	output logic  funct7_sub_o,
+	output logic  is_csr_o,
+	output u2     csr_op_o,
+	output logic  csr_use_imm_o,
+	output u12    csr_addr_o
 );
 	u7 opcode;
 	u3 funct3;
@@ -89,6 +93,10 @@ module decoder import common::*;(
 		mem_size_o  = MSIZE8;
 		rs1_used_o  = 1'b0;
 		rs2_used_o  = 1'b0;
+		is_csr_o    = 1'b0;
+		csr_op_o    = 2'b00;
+		csr_use_imm_o = 1'b0;
+		csr_addr_o  = instr_i[31:20];
 
 		case (opcode)
 			// 0010011: OP-IMM
@@ -393,6 +401,33 @@ module decoder import common::*;(
 			// 1101011: custom trap instruction (0x0005006b in lab test image)
 			7'b1101011: begin
 				trap_o = 1'b1;
+			end
+			// 1110011: SYSTEM (CSR access)
+			7'b1110011: begin
+				unique case (funct3)
+					3'b001, 3'b010, 3'b011: begin
+						// CSRRW / CSRRS / CSRRC: rs1 carries the source operand.
+						wen_o      = 1'b1;
+						is_csr_o   = 1'b1;
+						csr_op_o   = funct3[1:0];
+						csr_use_imm_o = 1'b0;
+						csr_addr_o = instr_i[31:20];
+						rs1_used_o = 1'b1;
+					end
+					3'b101, 3'b110, 3'b111: begin
+						// CSRRWI / CSRRSI / CSRRCI: rs1 field is a 5-bit zero-extended uimm.
+						wen_o      = 1'b1;
+						is_csr_o   = 1'b1;
+						csr_op_o   = funct3[1:0];
+						csr_use_imm_o = 1'b1;
+						csr_addr_o = instr_i[31:20];
+						imm_o      = {59'd0, instr_i[19:15]};
+					end
+					default: begin
+						// 000/100 are ECALL/EBREAK/MRET/etc. — not in Lab4 scope.
+						wen_o = 1'b0;
+					end
+				endcase
 			end
 			default: begin
 				wen_o = 1'b0;

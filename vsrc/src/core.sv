@@ -3,11 +3,23 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
+`include "include/csr.sv"
 `endif
 
+`include "src/pipeline/units/decoder/decoder.sv"
+`include "src/pipeline/units/regfile/regfile.sv"
+`include "src/pipeline/stages/if_stage.sv"
+`include "src/pipeline/stages/id_stage.sv"
+`include "src/pipeline/stages/ex_stage.sv"
+`include "src/pipeline/stages/mem_stage.sv"
+`include "src/pipeline/stages/wb_stage.sv"
+`include "src/pipeline/regs/if_id_reg.sv"
+`include "src/pipeline/regs/id_ex_reg.sv"
+`include "src/pipeline/regs/ex_mem_reg.sv"
+`include "src/pipeline/regs/mem_wb_reg.sv"
+`include "src/csr/csr_file.sv"
 
-
-module core import common::*;(
+module core import common::*; import csr_pkg::*;(
     input  logic       clk,
     input  logic       reset,
     output ibus_req_t  ireq,
@@ -52,12 +64,12 @@ module core import common::*;(
     u32    if_id_instr;
 
     // ID stage decoded control and operands.
-    u5     id_rs1;                                                                
-    u5     id_rs2; 
-    u5     id_rd;      
-    logic  id_wen;  
-    logic  id_trap; 
-    logic  id_use_imm; 
+    u5     id_rs1;
+    u5     id_rs2;
+    u5     id_rd;
+    logic  id_wen;
+    logic  id_trap;
+    logic  id_use_imm;
     logic  id_is_load;
     logic  id_is_store;
     logic  id_is_branch;
@@ -73,6 +85,10 @@ module core import common::*;(
     word_t id_op2;
     logic  id_rs1_used;
     logic  id_rs2_used;
+    logic  id_is_csr;
+    u2     id_csr_op;
+    logic  id_csr_use_imm;
+    u12    id_csr_addr;
     word_t rs1_val;
     word_t rs2_val;
 
@@ -97,6 +113,10 @@ module core import common::*;(
     word_t id_ex_imm;
     word_t id_ex_op1;
     word_t id_ex_op2;
+    logic  id_ex_is_csr;
+    u2     id_ex_csr_op;
+    logic  id_ex_csr_use_imm;
+    u12    id_ex_csr_addr;
 
     word_t ex_result;
     logic  ex_result_valid;
@@ -105,6 +125,9 @@ module core import common::*;(
     logic  ex_redirect_valid;
     logic  ex_redirect_fire;
     word_t ex_redirect_pc;
+    logic  ex_csr_wen;
+    word_t ex_csr_wdata;
+    word_t ex_csr_rdata;
 
     // EX/MEM pipeline register.
     logic  ex_mem_valid;
@@ -119,6 +142,10 @@ module core import common::*;(
     msize_t ex_mem_mem_size;
     word_t ex_mem_store_data;
     word_t ex_mem_result;
+    logic  ex_mem_is_csr;
+    logic  ex_mem_csr_wen;
+    u12    ex_mem_csr_addr;
+    word_t ex_mem_csr_wdata;
 
     logic  mem_valid;
     word_t mem_result;
@@ -150,6 +177,9 @@ module core import common::*;(
     logic  mem_wb_is_mem;
     word_t mem_wb_mem_addr;
     word_t mem_wb_result;
+    logic  mem_wb_csr_wen;
+    u12    mem_wb_csr_addr;
+    word_t mem_wb_csr_wdata;
 
     logic  wb_rf_wen;
     u5     wb_rf_waddr;
@@ -160,6 +190,19 @@ module core import common::*;(
     logic  load_use_hazard;
 
     logic flush_all;
+
+    // CSR file architectural state, exported to Difftest.
+    word_t csr_mstatus;
+    word_t csr_mtvec;
+    word_t csr_mip;
+    word_t csr_mie;
+    word_t csr_mscratch;
+    word_t csr_mcause;
+    word_t csr_mtval;
+    word_t csr_mepc;
+    word_t csr_mcycle;
+    word_t csr_mhartid;
+    word_t csr_satp;
 
     // Trap commits flush the pipeline once they reach WB.
     assign flush_all = reset || trap_valid_q;
@@ -243,7 +286,11 @@ module core import common::*;(
         .alu_op_o         (id_alu_op),
         .imm_o            (id_imm),
         .op1_o            (id_op1),
-        .op2_o            (id_op2)
+        .op2_o            (id_op2),
+        .is_csr_o         (id_is_csr),
+        .csr_op_o         (id_csr_op),
+        .csr_use_imm_o    (id_csr_use_imm),
+        .csr_addr_o       (id_csr_addr)
     );
 
     id_ex_reg u_id_ex_reg(
@@ -271,6 +318,10 @@ module core import common::*;(
         .in_imm_i     (id_imm),
         .in_op1_i     (id_op1),
         .in_op2_i     (id_op2),
+        .in_is_csr_i  (id_is_csr),
+        .in_csr_op_i  (id_csr_op),
+        .in_csr_use_imm_i(id_csr_use_imm),
+        .in_csr_addr_i(id_csr_addr),
         .out_valid_o  (id_ex_valid),
         .out_pc_o     (id_ex_pc),
         .out_instr_o  (id_ex_instr),
@@ -290,7 +341,11 @@ module core import common::*;(
         .out_alu_op_o (id_ex_alu_op),
         .out_imm_o    (id_ex_imm),
         .out_op1_o    (id_ex_op1),
-        .out_op2_o    (id_ex_op2)
+        .out_op2_o    (id_ex_op2),
+        .out_is_csr_o (id_ex_is_csr),
+        .out_csr_op_o (id_ex_csr_op),
+        .out_csr_use_imm_o(id_ex_csr_use_imm),
+        .out_csr_addr_o(id_ex_csr_addr)
     );
 
     ex_stage u_ex_stage(
@@ -310,11 +365,17 @@ module core import common::*;(
         .is_jalr_i (id_ex_is_jalr),
         .branch_funct3_i(id_ex_branch_funct3),
         .ex_accept_i(!mem_stall),
+        .is_csr_i  (id_ex_is_csr),
+        .csr_op_i  (id_ex_csr_op),
+        .csr_use_imm_i(id_ex_csr_use_imm),
+        .csr_rdata_i(ex_csr_rdata),
         .result_o  (ex_result),
         .result_valid_o(ex_result_valid),
         .stall_o   (ex_stall),
         .redirect_valid_o(ex_redirect_valid),
-        .redirect_pc_o(ex_redirect_pc)
+        .redirect_pc_o(ex_redirect_pc),
+        .csr_wen_o (ex_csr_wen),
+        .csr_wdata_o(ex_csr_wdata)
     );
 
     ex_mem_reg u_ex_mem_reg(
@@ -334,6 +395,10 @@ module core import common::*;(
         .in_mem_size_i(id_ex_mem_size),
         .in_store_data_i(id_ex_op2),
         .in_result_i (ex_result),
+        .in_is_csr_i (id_ex_is_csr),
+        .in_csr_wen_i(ex_csr_wen),
+        .in_csr_addr_i(id_ex_csr_addr),
+        .in_csr_wdata_i(ex_csr_wdata),
         .out_valid_o (ex_mem_valid),
         .out_pc_o    (ex_mem_pc),
         .out_instr_o (ex_mem_instr),
@@ -345,7 +410,11 @@ module core import common::*;(
         .out_mem_unsigned_o(ex_mem_mem_unsigned),
         .out_mem_size_o(ex_mem_mem_size),
         .out_store_data_o(ex_mem_store_data),
-        .out_result_o(ex_mem_result)
+        .out_result_o(ex_mem_result),
+        .out_is_csr_o(ex_mem_is_csr),
+        .out_csr_wen_o(ex_mem_csr_wen),
+        .out_csr_addr_o(ex_mem_csr_addr),
+        .out_csr_wdata_o(ex_mem_csr_wdata)
     );
 
     mem_stage u_mem_stage(
@@ -387,6 +456,9 @@ module core import common::*;(
         .in_store_addr_i(mem_store_event_addr),
         .in_store_data_i(mem_store_event_data),
         .in_store_mask_i(mem_store_event_mask),
+        .in_csr_wen_i (ex_mem_csr_wen),
+        .in_csr_addr_i(ex_mem_csr_addr),
+        .in_csr_wdata_i(ex_mem_csr_wdata),
         .out_valid_o (mem_wb_valid),
         .out_pc_o    (mem_wb_pc),
         .out_instr_o (mem_wb_instr),
@@ -399,7 +471,10 @@ module core import common::*;(
         .out_store_valid_o(wb_store_event_valid),
         .out_store_addr_o(wb_store_event_addr),
         .out_store_data_o(wb_store_event_data),
-        .out_store_mask_o(wb_store_event_mask)
+        .out_store_mask_o(wb_store_event_mask),
+        .out_csr_wen_o (mem_wb_csr_wen),
+        .out_csr_addr_o(mem_wb_csr_addr),
+        .out_csr_wdata_o(mem_wb_csr_wdata)
     );
 
     wb_stage u_wb_stage(
@@ -415,7 +490,30 @@ module core import common::*;(
         .commit_wen_o  (wb_commit_wen)
     );
 
-    `UNUSED_OK({trint, swint, exint, mem_store_event_valid, mem_store_event_addr, mem_store_event_data, mem_store_event_mask});
+    // CSR file: read at EX, write at WB so the architectural state advances
+    // exactly when the CSR instruction commits (Difftest-friendly).
+    csr_file u_csr_file(
+        .clk        (clk),
+        .reset      (reset),
+        .raddr_i    (id_ex_csr_addr),
+        .rdata_o    (ex_csr_rdata),
+        .wen_i      (mem_wb_valid && mem_wb_csr_wen),
+        .waddr_i    (mem_wb_csr_addr),
+        .wdata_i    (mem_wb_csr_wdata),
+        .mstatus_o  (csr_mstatus),
+        .mtvec_o    (csr_mtvec),
+        .mip_o      (csr_mip),
+        .mie_o      (csr_mie),
+        .mscratch_o (csr_mscratch),
+        .mcause_o   (csr_mcause),
+        .mtval_o    (csr_mtval),
+        .mepc_o     (csr_mepc),
+        .mcycle_o   (csr_mcycle),
+        .mhartid_o  (csr_mhartid),
+        .satp_o     (csr_satp)
+    );
+
+    `UNUSED_OK({trint, swint, exint, mem_store_event_valid, mem_store_event_addr, mem_store_event_data, mem_store_event_mask, ex_mem_is_csr});
 
     // Update commit/trap state after the WB stage becomes architecturally visible.
     always_ff @(posedge clk) begin
@@ -481,7 +579,7 @@ module core import common::*;(
 `ifdef VERILATOR
     DifftestInstrCommit DifftestInstrCommit(
         .clock              (clk),
-        .coreid             (0),
+        .coreid             (csr_mhartid[7:0]),
         .index              (0),
         .valid              (commit_valid_q),
         .pc                 (commit_pc_q),
@@ -506,7 +604,7 @@ module core import common::*;(
 
     DifftestArchIntRegState DifftestArchIntRegState(
         .clock              (clk),
-        .coreid             (0),
+        .coreid             (csr_mhartid[7:0]),
         .gpr_0              (gpr[0]),
         .gpr_1              (gpr[1]),
         .gpr_2              (gpr[2]),
@@ -543,7 +641,7 @@ module core import common::*;(
 
     DifftestTrapEvent DifftestTrapEvent(
         .clock              (clk),
-        .coreid             (0),
+        .coreid             (csr_mhartid[7:0]),
         .valid              (trap_valid_q),
         .code               (trap_code_q),
         .pc                 (trap_pc_q),
@@ -551,28 +649,28 @@ module core import common::*;(
         .instrCnt           (instr_cnt_q)
     );
 
-    DifftestCSRState DifftestCSRState(
-        .clock              (clk),
-        .coreid             (0),
-        .priviledgeMode     (3),
-        .mstatus            (0),
-        .sstatus            (0),
-        .mepc               (0),
-        .sepc               (0),
-        .mtval              (0),
-        .stval              (0),
-        .mtvec              (0),
-        .stvec              (0),
-        .mcause             (0),
-        .scause             (0),
-        .satp               (0),
-        .mip                (0),
-        .mie                (0),
-        .mscratch           (0),
-        .sscratch           (0),
-        .mideleg            (0),
-        .medeleg            (0)
-    );
+	DifftestCSRState DifftestCSRState(
+		.clock              (clk),
+		.coreid             (csr_mhartid[7:0]),
+		.priviledgeMode     (3),
+		.mstatus            (csr_mstatus),
+		.sstatus            (csr_mstatus & SSTATUS_MASK),
+		.mepc               (csr_mepc),
+		.sepc               (0),
+		.mtval              (csr_mtval),
+		.stval              (0),
+		.mtvec              (csr_mtvec),
+		.stvec              (0),
+		.mcause             (csr_mcause),
+		.scause             (0),
+		.satp               (csr_satp),
+		.mip                (csr_mip),
+		.mie                (csr_mie),
+		.mscratch           (csr_mscratch),
+		.sscratch           (0),
+		.mideleg            (0),
+		.medeleg            (0)
+	);
 `endif
 endmodule
 
