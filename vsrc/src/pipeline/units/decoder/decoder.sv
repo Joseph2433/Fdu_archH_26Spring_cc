@@ -29,7 +29,9 @@ module decoder import common::*;(
 	output logic  is_csr_o,
 	output u2     csr_op_o,
 	output logic  csr_use_imm_o,
-	output u12    csr_addr_o
+	output u12    csr_addr_o,
+	output logic  is_ecall_o,
+	output logic  is_mret_o
 );
 	u7 opcode;
 	u3 funct3;
@@ -97,6 +99,8 @@ module decoder import common::*;(
 		csr_op_o    = 2'b00;
 		csr_use_imm_o = 1'b0;
 		csr_addr_o  = instr_i[31:20];
+		is_ecall_o  = 1'b0;
+		is_mret_o   = 1'b0;
 
 		case (opcode)
 			// 0010011: OP-IMM
@@ -405,6 +409,13 @@ module decoder import common::*;(
 			// 1110011: SYSTEM (CSR access)
 			7'b1110011: begin
 				unique case (funct3)
+					3'b000: begin
+						if (instr_i == 32'h0000_0073) begin
+							is_ecall_o = 1'b1;
+						end else if (instr_i == 32'h3020_0073) begin
+							is_mret_o = 1'b1;
+						end
+					end
 					3'b001, 3'b010, 3'b011: begin
 						// CSRRW / CSRRS / CSRRC: rs1 carries the source operand.
 						wen_o      = 1'b1;

@@ -7,6 +7,7 @@
 `include "util/IBusToCBus.sv"
 `include "util/DBusToCBus.sv"
 `include "util/CBusArbiter.sv"
+`include "src/mmu/cbus_mmu.sv"
 
 `endif
 module VTop 
@@ -24,8 +25,18 @@ module VTop
     dbus_resp_t dresp;
     cbus_req_t  icreq,  dcreq;
     cbus_resp_t icresp, dcresp;
+    cbus_req_t  cpu_oreq;
+    cbus_resp_t cpu_oresp;
+    word_t satp;
+    u2 priv_mode;
 
-    core core(.*);
+    core core(
+        .clk(clk), .reset(reset),
+        .ireq(ireq), .iresp(iresp),
+        .dreq(dreq), .dresp(dresp),
+        .trint(trint), .swint(swint), .exint(exint),
+        .satp_o(satp), .priv_mode_o(priv_mode)
+    );
     IBusToCBus icvt(.*);
 
     DBusToCBus dcvt(.*);
@@ -34,7 +45,21 @@ module VTop
     CBusArbiter mux(
         .ireqs({icreq, dcreq}),
         .iresps({icresp, dcresp}),
-        .*
+        .clk(clk),
+        .reset(reset),
+        .oreq(cpu_oreq),
+        .oresp(cpu_oresp)
+    );
+
+    cbus_mmu mmu(
+        .clk(clk),
+        .reset(reset),
+        .ireq(cpu_oreq),
+        .iresp(cpu_oresp),
+        .oreq(oreq),
+        .oresp(oresp),
+        .satp_i(satp),
+        .priv_mode_i(priv_mode)
     );
 
 	always_ff @(posedge clk) begin

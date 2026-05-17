@@ -23,6 +23,10 @@ module ex_stage import common::*;(
     input  u2     csr_op_i,
     input  logic  csr_use_imm_i,
     input  word_t csr_rdata_i,
+    input  logic  is_ecall_i,
+    input  logic  is_mret_i,
+    input  word_t mtvec_i,
+    input  word_t mepc_i,
     output word_t result_o,
     output logic  result_valid_o,
     output logic  stall_o,
@@ -428,6 +432,18 @@ module ex_stage import common::*;(
             redirect_valid_o = 1'b1;
             redirect_pc_o = (op1_i + imm_i) & ~64'd1;
             result_o = pc_i + 64'd4;
+        end
+
+        if (is_ecall_i && valid_i) begin
+            result_o = '0;
+            result_valid_o = 1'b1;
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = mtvec_i;
+        end else if (is_mret_i && valid_i) begin
+            result_o = '0;
+            result_valid_o = 1'b1;
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = mepc_i;
         end
 
         // CSR instructions: rd gets the old CSR value; new CSR value is sent to WB.

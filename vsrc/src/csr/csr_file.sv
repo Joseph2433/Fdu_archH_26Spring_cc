@@ -20,6 +20,10 @@ module csr_file import common::*; import csr_pkg::*;(
     input  logic    wen_i,
     input  csr_addr_t waddr_i,
     input  word_t   wdata_i,
+    input  logic    trap_enter_i,
+    input  word_t   trap_pc_i,
+    input  u2       trap_priv_i,
+    input  logic    mret_i,
     // Architectural state outputs for Difftest connection.
     output word_t   mstatus_o,
     output word_t   mtvec_o,
@@ -31,7 +35,8 @@ module csr_file import common::*; import csr_pkg::*;(
     output word_t   mepc_o,
     output word_t   mcycle_o,
     output word_t   mhartid_o,
-    output word_t   satp_o
+    output word_t   satp_o,
+    output u2       priv_mode_o
 );
     word_t mstatus_q;
     word_t mtvec_q;
@@ -43,6 +48,15 @@ module csr_file import common::*; import csr_pkg::*;(
     word_t mepc_q;
     word_t mcycle_q;
     word_t satp_q;
+    u2     priv_mode_q;
+    u2     mret_ret_priv;
+
+    localparam u2 PRIV_U = 2'b00;
+    localparam u2 PRIV_M = 2'b11;
+    localparam int MSTATUS_MIE_BIT  = 3;
+    localparam int MSTATUS_MPIE_BIT = 7;
+    localparam int MSTATUS_MPP_LSB  = 11;
+    localparam int MSTATUS_MPRV_BIT = 17;
 
     // mhartid is read-only zero in our single-core implementation.
     assign mhartid_o  = '0;
@@ -56,6 +70,8 @@ module csr_file import common::*; import csr_pkg::*;(
     assign mepc_o     = mepc_q;
     assign mcycle_o   = mcycle_q;
     assign satp_o     = satp_q;
+    assign priv_mode_o = priv_mode_q;
+    assign mret_ret_priv = mstatus_q[MSTATUS_MPP_LSB +: 2];
 
     // Combinational read with masks applied where ISA requires it.
     always_comb begin
@@ -87,6 +103,7 @@ module csr_file import common::*; import csr_pkg::*;(
             mepc_q     <= '0;
             mcycle_q   <= '0;
             satp_q     <= '0;
+            priv_mode_q <= PRIV_M;
         end else begin
             // Default: mcycle increments every cycle (wraps automatically on overflow).
             mcycle_q <= mcycle_q + 64'd1;
@@ -106,6 +123,25 @@ module csr_file import common::*; import csr_pkg::*;(
                     // CSR_MHARTID is read-only zero and ignores writes.
                     default: ;
                 endcase
+            end
+
+            if (trap_enter_i) begin
+                mcause_q <= (trap_priv_i == PRIV_U) ? 64'd8 : 64'd11;
+                mepc_q   <= trap_pc_i;
+                mtval_q  <= '0;
+
+                mstatus_q[MSTATUS_MPIE_BIT] <= mstatus_q[MSTATUS_MIE_BIT];
+                mstatus_q[MSTATUS_MIE_BIT]  <= 1'b0;
+                mstatus_q[MSTATUS_MPP_LSB +: 2] <= trap_priv_i;
+                priv_mode_q <= PRIV_M;
+            end else if (mret_i) begin
+                mstatus_q[MSTATUS_MIE_BIT] <= mstatus_q[MSTATUS_MPIE_BIT];
+                mstatus_q[MSTATUS_MPIE_BIT] <= 1'b1;
+                mstatus_q[MSTATUS_MPP_LSB +: 2] <= PRIV_U;
+                if (mret_ret_priv != PRIV_M) begin
+                    mstatus_q[MSTATUS_MPRV_BIT] <= 1'b0;
+                end
+                priv_mode_q <= mret_ret_priv;
             end
         end
     end

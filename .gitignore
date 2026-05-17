@@ -5,7 +5,7 @@
 *.7z
 *.docx
 
-26-Arch/*
+26-Arch/
 教学PPT/
 lab1-report/
 lab2-report/
@@ -16,3 +16,5 @@ test2/
 .DS_Store
 .vscode/
 lab4-report/
+lab5-report/
+lab5

@@ -22,6 +22,8 @@ module mem_wb_reg import common::*;(
     input  logic  in_csr_wen_i,
     input  u12    in_csr_addr_i,
     input  word_t in_csr_wdata_i,
+    input  logic  in_is_ecall_i,
+    input  logic  in_is_mret_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
     output u32    out_instr_o,
@@ -37,7 +39,9 @@ module mem_wb_reg import common::*;(
     output u8     out_store_mask_o,
     output logic  out_csr_wen_o,
     output u12    out_csr_addr_o,
-    output word_t out_csr_wdata_o
+    output word_t out_csr_wdata_o,
+    output logic  out_is_ecall_o,
+    output logic  out_is_mret_o
 );
     always_ff @(posedge clk) begin
         if (reset || flush_i) begin
@@ -57,6 +61,8 @@ module mem_wb_reg import common::*;(
             out_csr_wen_o   <= 1'b0;
             out_csr_addr_o  <= '0;
             out_csr_wdata_o <= '0;
+            out_is_ecall_o  <= 1'b0;
+            out_is_mret_o   <= 1'b0;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -74,6 +80,8 @@ module mem_wb_reg import common::*;(
             out_csr_wen_o   <= in_csr_wen_i;
             out_csr_addr_o  <= in_csr_addr_i;
             out_csr_wdata_o <= in_csr_wdata_i;
+            out_is_ecall_o  <= in_is_ecall_i;
+            out_is_mret_o   <= in_is_mret_i;
         end
     end
 endmodule
