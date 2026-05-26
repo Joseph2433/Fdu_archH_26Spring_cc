@@ -17,7 +17,9 @@ module mycpu_top
     output logic [2:0] size,
 
     input logic ready,
-    input logic last
+    input logic last,
+
+    output logic [3:0] dbg_o
 );
 
   cbus_req_t  oreq;
@@ -26,7 +28,8 @@ module mycpu_top
       .clk,
       .reset,
       .oreq,
-      .oresp
+      .oresp,
+      .dbg_o(dbg_o)
   );
 
   assign valid = oreq.valid;

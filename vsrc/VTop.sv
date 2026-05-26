@@ -10,13 +10,14 @@
 `include "src/mmu/cbus_mmu.sv"
 
 `endif
-module VTop 
+module VTop
 	import common::*;(
 	input logic clk, reset,
 
 	output cbus_req_t  oreq,
 	input  cbus_resp_t oresp,
-	input logic trint, swint, exint
+	input logic trint, swint, exint,
+	output logic [3:0] dbg_o
 );
 
     ibus_req_t  ireq;
@@ -29,13 +30,20 @@ module VTop
     cbus_resp_t cpu_oresp;
     word_t satp;
     u2 priv_mode;
+    logic mmu_fault;
+    word_t mmu_fault_addr;
+    logic mmu_fault_is_store;
 
     core core(
         .clk(clk), .reset(reset),
         .ireq(ireq), .iresp(iresp),
         .dreq(dreq), .dresp(dresp),
         .trint(trint), .swint(swint), .exint(exint),
-        .satp_o(satp), .priv_mode_o(priv_mode)
+        .satp_o(satp), .priv_mode_o(priv_mode),
+        .mmu_fault_i(mmu_fault),
+        .mmu_fault_addr_i(mmu_fault_addr),
+        .mmu_fault_is_store_i(mmu_fault_is_store),
+        .dbg_o(dbg_o)
     );
     IBusToCBus icvt(.*);
 
@@ -59,7 +67,10 @@ module VTop
         .oreq(oreq),
         .oresp(oresp),
         .satp_i(satp),
-        .priv_mode_i(priv_mode)
+        .priv_mode_i(priv_mode),
+        .fault_o(mmu_fault),
+        .fault_addr_o(mmu_fault_addr),
+        .fault_is_store_o(mmu_fault_is_store)
     );
 
 	always_ff @(posedge clk) begin

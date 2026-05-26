@@ -42,7 +42,9 @@ module id_stage import common::*;(
     output logic  csr_use_imm_o,
     output u12    csr_addr_o,
     output logic  is_ecall_o,
-    output logic  is_mret_o
+    output logic  is_mret_o,
+    output logic  is_sret_o,
+    output logic  is_sfence_o
 );
     logic rs1_used;
     logic rs2_used;
@@ -80,7 +82,9 @@ module id_stage import common::*;(
         .csr_use_imm_o(csr_use_imm_o),
         .csr_addr_o   (csr_addr_o),
         .is_ecall_o   (is_ecall_o),
-        .is_mret_o    (is_mret_o)
+        .is_mret_o    (is_mret_o),
+        .is_sret_o    (is_sret_o),
+        .is_sfence_o  (is_sfence_o)
     );
 
     always_comb begin

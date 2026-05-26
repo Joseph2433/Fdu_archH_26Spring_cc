@@ -14,7 +14,10 @@ module cbus_mmu import common::*; import csr_pkg::*;(
     output cbus_req_t oreq,
     input  cbus_resp_t oresp,
     input  word_t     satp_i,
-    input  u2         priv_mode_i
+    input  u2         priv_mode_i,
+    output logic      fault_o,
+    output word_t     fault_addr_o,
+    output logic      fault_is_store_o
 );
     typedef enum logic [2:0] {
         S_IDLE,
@@ -22,7 +25,8 @@ module cbus_mmu import common::*; import csr_pkg::*;(
         S_WALK_L2,
         S_WALK_L1,
         S_WALK_L0,
-        S_ACCESS
+        S_ACCESS,
+        S_FAULT
     } state_t;
 
     localparam u2 PRIV_M = 2'b11;
@@ -38,6 +42,8 @@ module cbus_mmu import common::*; import csr_pkg::*;(
     word_t translated_addr;
     logic pte_leaf;
     logic pte_valid;
+    logic l2_superpage_misaligned;
+    logic l1_superpage_misaligned;
     u9 vpn2;
     u9 vpn1;
     u9 vpn0;
@@ -50,6 +56,10 @@ module cbus_mmu import common::*; import csr_pkg::*;(
     assign vpn0 = vaddr_q[20:12];
     assign pte_valid = pte[0];
     assign pte_leaf = |pte[3:1];
+    // For a leaf at L2 (1GB), low PPN bits (PPN1, PPN0) must be zero: pte[27:10] == 0
+    assign l2_superpage_misaligned = |pte[27:10];
+    // For a leaf at L1 (2MB), PPN0 must be zero: pte[18:10] == 0
+    assign l1_superpage_misaligned = |pte[18:10];
 
     always_comb begin
         unique case (state_q)
@@ -80,13 +90,26 @@ module cbus_mmu import common::*; import csr_pkg::*;(
         end else if (state_q inside {S_WALK_L2, S_WALK_L1, S_WALK_L0}) begin
             oreq = active_req_q;
         end else if (state_q == S_BYPASS) begin
-            oreq = active_req_q;
+            oreq = ireq;
             iresp = oresp;
+        end else if (state_q == S_FAULT) begin
+            // Return a dummy "done" to upstream so MEM stage releases the request
+            iresp.ready = 1'b1;
+            iresp.last  = 1'b1;
+            iresp.data  = '0;
         end else begin
             oreq = active_req_q;
             iresp = oresp;
         end
     end
+
+    // Fault signaling — pulse for one cycle when entering S_FAULT
+    logic fault_pulse_q;
+    word_t fault_addr_q;
+    logic fault_is_store_q;
+    assign fault_o = fault_pulse_q;
+    assign fault_addr_o = fault_addr_q;
+    assign fault_is_store_o = fault_is_store_q;
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -94,7 +117,11 @@ module cbus_mmu import common::*; import csr_pkg::*;(
             saved_req_q <= '0;
             active_req_q <= '0;
             vaddr_q <= '0;
+            fault_pulse_q <= 1'b0;
+            fault_addr_q <= '0;
+            fault_is_store_q <= 1'b0;
         end else begin
+            fault_pulse_q <= 1'b0;  // default: clear pulse
             unique case (state_q)
                 S_IDLE: begin
                     if (translate_req) begin
@@ -109,10 +136,22 @@ module cbus_mmu import common::*; import csr_pkg::*;(
                         saved_req_q <= ireq;
                         vaddr_q <= ireq.addr;
                         if (mem_done) begin
-                            if (pte_valid && pte_leaf) begin
-                                active_req_q <= ireq;
-                                active_req_q.addr <= {8'd0, pte[53:28], ireq.addr[29:0]};
-                                state_q <= S_ACCESS;
+                            if (!pte_valid) begin
+                                fault_pulse_q <= 1'b1;
+                                fault_addr_q <= ireq.addr;
+                                fault_is_store_q <= ireq.is_write;
+                                state_q <= S_FAULT;
+                            end else if (pte_leaf) begin
+                                if (l2_superpage_misaligned) begin
+                                    fault_pulse_q <= 1'b1;
+                                    fault_addr_q <= ireq.addr;
+                                    fault_is_store_q <= ireq.is_write;
+                                    state_q <= S_FAULT;
+                                end else begin
+                                    active_req_q <= ireq;
+                                    active_req_q.addr <= {8'd0, pte[53:28], ireq.addr[29:0]};
+                                    state_q <= S_ACCESS;
+                                end
                             end else begin
                                 active_req_q.addr <= {8'd0, pte[53:10], 12'd0} + {52'd0, ireq.addr[29:21], 3'b000};
                                 state_q <= S_WALK_L1;
@@ -121,7 +160,6 @@ module cbus_mmu import common::*; import csr_pkg::*;(
                             state_q <= S_WALK_L2;
                         end
                     end else if (ireq.valid && !mem_done) begin
-                        active_req_q <= ireq;
                         state_q <= S_BYPASS;
                     end
                 end
@@ -134,10 +172,22 @@ module cbus_mmu import common::*; import csr_pkg::*;(
 
                 S_WALK_L2: begin
                     if (mem_done) begin
-                        if (pte_valid && pte_leaf) begin
-                            active_req_q <= saved_req_q;
-                            active_req_q.addr <= translated_addr;
-                            state_q <= S_ACCESS;
+                        if (!pte_valid) begin
+                            fault_pulse_q <= 1'b1;
+                            fault_addr_q <= vaddr_q;
+                            fault_is_store_q <= saved_req_q.is_write;
+                            state_q <= S_FAULT;
+                        end else if (pte_leaf) begin
+                            if (l2_superpage_misaligned) begin
+                                fault_pulse_q <= 1'b1;
+                                fault_addr_q <= vaddr_q;
+                                fault_is_store_q <= saved_req_q.is_write;
+                                state_q <= S_FAULT;
+                            end else begin
+                                active_req_q <= saved_req_q;
+                                active_req_q.addr <= translated_addr;
+                                state_q <= S_ACCESS;
+                            end
                         end else begin
                             active_req_q.addr <= {8'd0, pte[53:10], 12'd0} + {52'd0, vpn1, 3'b000};
                             state_q <= S_WALK_L1;
@@ -147,10 +197,22 @@ module cbus_mmu import common::*; import csr_pkg::*;(
 
                 S_WALK_L1: begin
                     if (mem_done) begin
-                        if (pte_valid && pte_leaf) begin
-                            active_req_q <= saved_req_q;
-                            active_req_q.addr <= translated_addr;
-                            state_q <= S_ACCESS;
+                        if (!pte_valid) begin
+                            fault_pulse_q <= 1'b1;
+                            fault_addr_q <= vaddr_q;
+                            fault_is_store_q <= saved_req_q.is_write;
+                            state_q <= S_FAULT;
+                        end else if (pte_leaf) begin
+                            if (l1_superpage_misaligned) begin
+                                fault_pulse_q <= 1'b1;
+                                fault_addr_q <= vaddr_q;
+                                fault_is_store_q <= saved_req_q.is_write;
+                                state_q <= S_FAULT;
+                            end else begin
+                                active_req_q <= saved_req_q;
+                                active_req_q.addr <= translated_addr;
+                                state_q <= S_ACCESS;
+                            end
                         end else begin
                             active_req_q.addr <= {8'd0, pte[53:10], 12'd0} + {52'd0, vpn0, 3'b000};
                             state_q <= S_WALK_L0;
@@ -160,9 +222,16 @@ module cbus_mmu import common::*; import csr_pkg::*;(
 
                 S_WALK_L0: begin
                     if (mem_done) begin
-                        active_req_q <= saved_req_q;
-                        active_req_q.addr <= pte_valid ? translated_addr : '0;
-                        state_q <= S_ACCESS;
+                        if (!pte_valid || !pte_leaf) begin
+                            fault_pulse_q <= 1'b1;
+                            fault_addr_q <= vaddr_q;
+                            fault_is_store_q <= saved_req_q.is_write;
+                            state_q <= S_FAULT;
+                        end else begin
+                            active_req_q <= saved_req_q;
+                            active_req_q.addr <= translated_addr;
+                            state_q <= S_ACCESS;
+                        end
                     end
                 end
 
@@ -170,6 +239,11 @@ module cbus_mmu import common::*; import csr_pkg::*;(
                     if (mem_done) begin
                         state_q <= S_IDLE;
                     end
+                end
+
+                S_FAULT: begin
+                    // One cycle of fake done returned to upstream
+                    state_q <= S_IDLE;
                 end
 
                 default: state_q <= S_IDLE;

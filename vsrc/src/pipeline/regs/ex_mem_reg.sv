@@ -25,6 +25,7 @@ module ex_mem_reg import common::*;(
     input  word_t in_csr_wdata_i,
     input  logic  in_is_ecall_i,
     input  logic  in_is_mret_i,
+    input  logic  in_is_sret_i,
     output logic  out_valid_o,
     output word_t out_pc_o,
     output u32    out_instr_o,
@@ -42,7 +43,8 @@ module ex_mem_reg import common::*;(
     output u12    out_csr_addr_o,
     output word_t out_csr_wdata_o,
     output logic  out_is_ecall_o,
-    output logic  out_is_mret_o
+    output logic  out_is_mret_o,
+    output logic  out_is_sret_o
 );
     always_ff @(posedge clk) begin
         if (reset || flush_i) begin
@@ -64,6 +66,7 @@ module ex_mem_reg import common::*;(
             out_csr_wdata_o <= '0;
             out_is_ecall_o  <= 1'b0;
             out_is_mret_o   <= 1'b0;
+            out_is_sret_o   <= 1'b0;
         end else if (stall_i) begin
             out_valid_o  <= out_valid_o;
             out_pc_o     <= out_pc_o;
@@ -83,6 +86,7 @@ module ex_mem_reg import common::*;(
             out_csr_wdata_o <= out_csr_wdata_o;
             out_is_ecall_o  <= out_is_ecall_o;
             out_is_mret_o   <= out_is_mret_o;
+            out_is_sret_o   <= out_is_sret_o;
         end else begin
             out_valid_o  <= in_valid_i;
             out_pc_o     <= in_pc_i;
@@ -102,6 +106,7 @@ module ex_mem_reg import common::*;(
             out_csr_wdata_o <= in_csr_wdata_i;
             out_is_ecall_o  <= in_is_ecall_i;
             out_is_mret_o   <= in_is_mret_i;
+            out_is_sret_o   <= in_is_sret_i;
         end
     end
 endmodule

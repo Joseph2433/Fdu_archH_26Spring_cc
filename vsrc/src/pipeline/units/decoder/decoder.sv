@@ -31,7 +31,9 @@ module decoder import common::*;(
 	output logic  csr_use_imm_o,
 	output u12    csr_addr_o,
 	output logic  is_ecall_o,
-	output logic  is_mret_o
+	output logic  is_mret_o,
+	output logic  is_sret_o,
+	output logic  is_sfence_o
 );
 	u7 opcode;
 	u3 funct3;
@@ -101,6 +103,8 @@ module decoder import common::*;(
 		csr_addr_o  = instr_i[31:20];
 		is_ecall_o  = 1'b0;
 		is_mret_o   = 1'b0;
+		is_sret_o   = 1'b0;
+		is_sfence_o = 1'b0;
 
 		case (opcode)
 			// 0010011: OP-IMM
@@ -414,6 +418,11 @@ module decoder import common::*;(
 							is_ecall_o = 1'b1;
 						end else if (instr_i == 32'h3020_0073) begin
 							is_mret_o = 1'b1;
+						end else if (instr_i == 32'h1020_0073) begin
+							is_sret_o = 1'b1;
+						end else if (funct7 == 7'b0001001) begin
+							// SFENCE.VMA rs1, rs2 — treat as fence: redirect to pc+4 via EX
+							is_sfence_o = 1'b1;
 						end
 					end
 					3'b001, 3'b010, 3'b011: begin

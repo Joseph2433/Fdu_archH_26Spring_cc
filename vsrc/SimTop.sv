@@ -27,6 +27,9 @@ module SimTop import common::*;(
     logic trint, swint, exint;
     word_t satp;
     u2 priv_mode;
+    logic mmu_fault;
+    word_t mmu_fault_addr;
+    logic mmu_fault_is_store;
 
     ibus_req_t  ireq;
     ibus_resp_t iresp;
@@ -37,7 +40,11 @@ module SimTop import common::*;(
 
     core core(
       .clk(clock), .reset, .ireq, .iresp, .dreq, .dresp, .trint, .swint, .exint,
-      .satp_o(satp), .priv_mode_o(priv_mode)
+      .satp_o(satp), .priv_mode_o(priv_mode),
+      .mmu_fault_i(mmu_fault),
+      .mmu_fault_addr_i(mmu_fault_addr),
+      .mmu_fault_is_store_i(mmu_fault_is_store),
+      .dbg_o()
     );
 
     IBusToCBus icvt(
@@ -65,7 +72,10 @@ module SimTop import common::*;(
         .oreq(oreq),
         .oresp(oresp),
         .satp_i(satp),
-        .priv_mode_i(priv_mode)
+        .priv_mode_i(priv_mode),
+        .fault_o(mmu_fault),
+        .fault_addr_o(mmu_fault_addr),
+        .fault_is_store_o(mmu_fault_is_store)
     );
 
     RAMHelper2 ram(

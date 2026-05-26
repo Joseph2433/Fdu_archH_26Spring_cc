@@ -25,8 +25,13 @@ module ex_stage import common::*;(
     input  word_t csr_rdata_i,
     input  logic  is_ecall_i,
     input  logic  is_mret_i,
+    input  logic  is_sret_i,
+    input  logic  is_sfence_i,
     input  word_t mtvec_i,
     input  word_t mepc_i,
+    input  word_t stvec_i,
+    input  word_t sepc_i,
+    input  logic  trap_to_s_i,
     output word_t result_o,
     output logic  result_valid_o,
     output logic  stall_o,
@@ -438,12 +443,23 @@ module ex_stage import common::*;(
             result_o = '0;
             result_valid_o = 1'b1;
             redirect_valid_o = 1'b1;
-            redirect_pc_o = mtvec_i;
+            redirect_pc_o = trap_to_s_i ? stvec_i : mtvec_i;
         end else if (is_mret_i && valid_i) begin
             result_o = '0;
             result_valid_o = 1'b1;
             redirect_valid_o = 1'b1;
             redirect_pc_o = mepc_i;
+        end else if (is_sret_i && valid_i) begin
+            result_o = '0;
+            result_valid_o = 1'b1;
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = sepc_i;
+        end else if (is_sfence_i && valid_i) begin
+            // SFENCE.VMA: treat as fence — flush via redirect to pc+4
+            result_o = '0;
+            result_valid_o = 1'b1;
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = pc_i + 64'd4;
         end
 
         // CSR instructions: rd gets the old CSR value; new CSR value is sent to WB.
