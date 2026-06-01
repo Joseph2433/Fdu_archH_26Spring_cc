@@ -21,9 +21,13 @@ module mem_stage import common::*;(
     output word_t     store_event_addr_o,
     output word_t     store_event_data_o,
     output u8         store_event_mask_o,
-    output word_t     mem_result_o
+    output word_t     mem_result_o,
+    output logic      exc_valid_o,
+    output word_t     exc_cause_o,
+    output word_t     exc_tval_o
 );
     logic mem_access;
+    logic mem_misaligned;
     logic completed_q;
     u3    byte_off;
     u6    shift_bits;
@@ -39,6 +43,14 @@ module mem_stage import common::*;(
     assign mem_access = is_load_i || is_store_i;
     assign byte_off   = ex_result_i[2:0];
     assign shift_bits = {byte_off, 3'b000};
+    always_comb begin
+        unique case (mem_size_i)
+            MSIZE1: mem_misaligned = 1'b0;
+            MSIZE2: mem_misaligned = ex_result_i[0];
+            MSIZE4: mem_misaligned = |ex_result_i[1:0];
+            default: mem_misaligned = |ex_result_i[2:0];
+        endcase
+    end
 
     always_comb begin
         unique case (mem_size_i)
@@ -69,17 +81,21 @@ module mem_stage import common::*;(
         endcase
     end
 
-    assign dreq_o.valid  = valid_i && mem_access && !completed_q;
+    assign exc_valid_o = valid_i && mem_access && mem_misaligned;
+    assign exc_cause_o = is_store_i ? 64'd6 : 64'd4;
+    assign exc_tval_o  = ex_result_i;
+
+    assign dreq_o.valid  = valid_i && mem_access && !completed_q && !mem_misaligned;
     assign dreq_o.addr   = ex_result_i;
     assign dreq_o.size   = mem_size_i;
     assign dreq_o.strobe = is_store_i ? write_strobe : 8'b0;
     assign dreq_o.data   = is_store_i ? shifted_store_data : '0;
 
     // Keep the memory stage frozen until current memory op gets a response.
-    assign stall_o = valid_i && mem_access && !completed_q;
+    assign stall_o = valid_i && mem_access && !completed_q && !mem_misaligned;
 
-    assign mem_valid_o = mem_access ? (valid_i && !completed_q && dresp_i.data_ok) : valid_i;
-    assign store_event_valid_o = mem_valid_o && is_store_i;
+    assign mem_valid_o = mem_misaligned ? valid_i : (mem_access ? (valid_i && !completed_q && dresp_i.data_ok) : valid_i);
+    assign store_event_valid_o = mem_valid_o && is_store_i && !mem_misaligned;
     assign store_event_addr_o  = {ex_result_i[63:3], 3'b000};
     assign store_event_data_o  = masked_store_data;
     assign store_event_mask_o  = write_strobe;

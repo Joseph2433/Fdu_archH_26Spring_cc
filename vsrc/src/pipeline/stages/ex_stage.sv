@@ -8,6 +8,7 @@ module ex_stage import common::*;(
     input  logic  flush_i,
     input  logic  valid_i,
     input  word_t pc_i,
+    input  u32    instr_i,
     input  word_t op1_i,
     input  word_t op2_i,
     input  word_t imm_i,
@@ -27,6 +28,7 @@ module ex_stage import common::*;(
     input  logic  is_mret_i,
     input  logic  is_sret_i,
     input  logic  is_sfence_i,
+    input  logic  illegal_i,
     input  word_t mtvec_i,
     input  word_t mepc_i,
     input  word_t stvec_i,
@@ -38,7 +40,10 @@ module ex_stage import common::*;(
     output logic  redirect_valid_o,
     output word_t redirect_pc_o,
     output logic  csr_wen_o,
-    output word_t csr_wdata_o
+    output word_t csr_wdata_o,
+    output logic  exc_valid_o,
+    output word_t exc_cause_o,
+    output word_t exc_tval_o
 );
     word_t rhs;
     word_t full_res;
@@ -48,6 +53,9 @@ module ex_stage import common::*;(
     logic  is_mdu;
     logic  is_mul;
     logic  is_div;
+    word_t branch_target;
+    word_t jal_target;
+    word_t jalr_target;
 
     typedef enum logic [2:0] {
         MDU_IDLE   = 3'b000,
@@ -377,6 +385,12 @@ module ex_stage import common::*;(
         redirect_pc_o = '0;
         csr_wen_o = 1'b0;
         csr_wdata_o = '0;
+        exc_valid_o = 1'b0;
+        exc_cause_o = '0;
+        exc_tval_o = '0;
+        branch_target = pc_i + imm_i;
+        jal_target = pc_i + imm_i;
+        jalr_target = (op1_i + imm_i) & ~64'd1;
 
         unique case (alu_op_i)
             ALU_ADD:  full_res = op1_i + rhs;
@@ -426,17 +440,43 @@ module ex_stage import common::*;(
                 default: branch_taken = 1'b0;
             endcase
             if (valid_i && branch_taken) begin
-                redirect_valid_o = 1'b1;
-                redirect_pc_o = pc_i + imm_i;
+                if (branch_target[1:0] != 2'b00) begin
+                    exc_valid_o = 1'b1;
+                    exc_cause_o = 64'd0;
+                    exc_tval_o = branch_target;
+                    redirect_valid_o = 1'b1;
+                    redirect_pc_o = mtvec_i;
+                end else begin
+                    redirect_valid_o = 1'b1;
+                    redirect_pc_o = branch_target;
+                end
             end
         end else if (is_jal_i && valid_i) begin
-            redirect_valid_o = 1'b1;
-            redirect_pc_o = pc_i + imm_i;
-            result_o = pc_i + 64'd4;
+            if (jal_target[1:0] != 2'b00) begin
+                exc_valid_o = 1'b1;
+                exc_cause_o = 64'd0;
+                exc_tval_o = jal_target;
+                redirect_valid_o = 1'b1;
+                redirect_pc_o = mtvec_i;
+                result_o = '0;
+            end else begin
+                redirect_valid_o = 1'b1;
+                redirect_pc_o = jal_target;
+                result_o = pc_i + 64'd4;
+            end
         end else if (is_jalr_i && valid_i) begin
-            redirect_valid_o = 1'b1;
-            redirect_pc_o = (op1_i + imm_i) & ~64'd1;
-            result_o = pc_i + 64'd4;
+            if (jalr_target[1:0] != 2'b00) begin
+                exc_valid_o = 1'b1;
+                exc_cause_o = 64'd0;
+                exc_tval_o = jalr_target;
+                redirect_valid_o = 1'b1;
+                redirect_pc_o = mtvec_i;
+                result_o = '0;
+            end else begin
+                redirect_valid_o = 1'b1;
+                redirect_pc_o = jalr_target;
+                result_o = pc_i + 64'd4;
+            end
         end
 
         if (is_ecall_i && valid_i) begin
@@ -483,6 +523,17 @@ module ex_stage import common::*;(
             result_valid_o = 1'b1;
             redirect_valid_o = 1'b1;
             redirect_pc_o = pc_i + 64'd4;
+        end
+
+        if (illegal_i && valid_i) begin
+            result_o = '0;
+            result_valid_o = 1'b1;
+            csr_wen_o = 1'b0;
+            exc_valid_o = 1'b1;
+            exc_cause_o = 64'd2;
+            exc_tval_o = {32'd0, instr_i};
+            redirect_valid_o = 1'b1;
+            redirect_pc_o = mtvec_i;
         end
     end
 

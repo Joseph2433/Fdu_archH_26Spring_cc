@@ -31,6 +31,9 @@ module csr_file import common::*; import csr_pkg::*;(
     input  logic    trap_to_s_i,
     input  logic    mret_i,
     input  logic    sret_i,
+    input  logic    trint_i,
+    input  logic    swint_i,
+    input  logic    exint_i,
     // Architectural state outputs for Difftest connection.
     output word_t   mstatus_o,
     output word_t   mtvec_o,
@@ -72,6 +75,8 @@ module csr_file import common::*; import csr_pkg::*;(
     word_t sepc_q;
     word_t scause_q;
     word_t stval_q;
+    word_t effective_mip;
+    word_t mstatus_after_write;
     u2     priv_mode_q;
     u2     mret_ret_priv;
     u1     sret_ret_priv_bit;
@@ -87,12 +92,33 @@ module csr_file import common::*; import csr_pkg::*;(
     localparam int MSTATUS_SPP_BIT  = 8;
     localparam int MSTATUS_MPP_LSB  = 11;
     localparam int MSTATUS_MPRV_BIT = 17;
+    localparam int MIP_MSIP_BIT      = 3;
+    localparam int MIP_MTIP_BIT      = 7;
+    localparam int MIP_MEIP_BIT      = 11;
+
+    always_comb begin
+        effective_mip = mip_q;
+        effective_mip[MIP_MSIP_BIT] = swint_i;
+        effective_mip[MIP_MTIP_BIT] = trint_i;
+        effective_mip[MIP_MEIP_BIT] = exint_i;
+    end
+
+    always_comb begin
+        mstatus_after_write = mstatus_q;
+        if (wen_i) begin
+            unique case (waddr_i)
+                CSR_MSTATUS: mstatus_after_write = (mstatus_q & ~MSTATUS_MASK) | (wdata_i & MSTATUS_MASK);
+                CSR_SSTATUS: mstatus_after_write = (mstatus_q & ~SSTATUS_MASK) | (wdata_i & SSTATUS_MASK);
+                default: ;
+            endcase
+        end
+    end
 
     // mhartid is read-only zero in our single-core implementation.
     assign mhartid_o  = '0;
     assign mstatus_o  = mstatus_q;
     assign mtvec_o    = mtvec_q;
-    assign mip_o      = mip_q;
+    assign mip_o      = effective_mip;
     assign mie_o      = mie_q;
     assign mscratch_o = mscratch_q;
     assign mcause_o   = mcause_q;
@@ -109,7 +135,7 @@ module csr_file import common::*; import csr_pkg::*;(
     assign stval_o    = stval_q;
     // sie/sip are views of mie/mip filtered by mideleg
     assign sie_o      = mie_q & mideleg_q;
-    assign sip_o      = mip_q & mideleg_q;
+    assign sip_o      = effective_mip & mideleg_q;
     assign sstatus_o  = mstatus_q & SSTATUS_MASK;
     assign priv_mode_o = priv_mode_q;
     assign mret_ret_priv     = mstatus_q[MSTATUS_MPP_LSB +: 2];
@@ -121,7 +147,7 @@ module csr_file import common::*; import csr_pkg::*;(
         unique case (raddr_i)
             CSR_MSTATUS:  rdata_o = mstatus_q;
             CSR_MTVEC:    rdata_o = mtvec_q;
-            CSR_MIP:      rdata_o = mip_q;
+            CSR_MIP:      rdata_o = effective_mip;
             CSR_MIE:      rdata_o = mie_q;
             CSR_MSCRATCH: rdata_o = mscratch_q;
             CSR_MCAUSE:   rdata_o = mcause_q;
@@ -138,7 +164,7 @@ module csr_file import common::*; import csr_pkg::*;(
             CSR_SCAUSE:   rdata_o = scause_q;
             CSR_STVAL:    rdata_o = stval_q;
             CSR_SIE:      rdata_o = mie_q & mideleg_q;
-            CSR_SIP:      rdata_o = mip_q & mideleg_q;
+            CSR_SIP:      rdata_o = effective_mip & mideleg_q;
             CSR_SSTATUS:  rdata_o = mstatus_q & SSTATUS_MASK;
             default:      rdata_o = '0;
         endcase
@@ -201,7 +227,7 @@ module csr_file import common::*; import csr_pkg::*;(
                     scause_q                        <= trap_cause_i;
                     sepc_q                          <= trap_pc_i;
                     stval_q                         <= trap_tval_i;
-                    mstatus_q[MSTATUS_SPIE_BIT]     <= mstatus_q[MSTATUS_SIE_BIT];
+                    mstatus_q[MSTATUS_SPIE_BIT]     <= mstatus_after_write[MSTATUS_SIE_BIT];
                     mstatus_q[MSTATUS_SIE_BIT]      <= 1'b0;
                     mstatus_q[MSTATUS_SPP_BIT]      <= trap_priv_i[0];  // SPP is 1 bit (1=S, 0=U)
                     priv_mode_q                     <= PRIV_S;
@@ -210,7 +236,7 @@ module csr_file import common::*; import csr_pkg::*;(
                     mcause_q                        <= trap_cause_i;
                     mepc_q                          <= trap_pc_i;
                     mtval_q                         <= trap_tval_i;
-                    mstatus_q[MSTATUS_MPIE_BIT]     <= mstatus_q[MSTATUS_MIE_BIT];
+                    mstatus_q[MSTATUS_MPIE_BIT]     <= mstatus_after_write[MSTATUS_MIE_BIT];
                     mstatus_q[MSTATUS_MIE_BIT]      <= 1'b0;
                     mstatus_q[MSTATUS_MPP_LSB +: 2] <= trap_priv_i;
                     priv_mode_q                     <= PRIV_M;
@@ -219,6 +245,7 @@ module csr_file import common::*; import csr_pkg::*;(
                 mstatus_q[MSTATUS_MIE_BIT]      <= mstatus_q[MSTATUS_MPIE_BIT];
                 mstatus_q[MSTATUS_MPIE_BIT]     <= 1'b1;
                 mstatus_q[MSTATUS_MPP_LSB +: 2] <= PRIV_U;
+                mstatus_q[16:15]                 <= 2'b00;  // XS <- Off
                 if (mret_ret_priv != PRIV_M) begin
                     mstatus_q[MSTATUS_MPRV_BIT] <= 1'b0;
                 end

@@ -33,7 +33,8 @@ module decoder import common::*;(
 	output logic  is_ecall_o,
 	output logic  is_mret_o,
 	output logic  is_sret_o,
-	output logic  is_sfence_o
+	output logic  is_sfence_o,
+	output logic  illegal_o
 );
 	u7 opcode;
 	u3 funct3;
@@ -105,10 +106,12 @@ module decoder import common::*;(
 		is_mret_o   = 1'b0;
 		is_sret_o   = 1'b0;
 		is_sfence_o = 1'b0;
+		illegal_o   = 1'b1;
 
 		case (opcode)
 			// 0010011: OP-IMM
 			7'b0010011: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				imm_o      = imm_i;
@@ -121,6 +124,7 @@ module decoder import common::*;(
 							imm_o = {58'd0, instr_i[25:20]};
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b010: alu_op_o = ALU_SLT; // slti
@@ -135,6 +139,7 @@ module decoder import common::*;(
 							imm_o = {58'd0, instr_i[25:20]};
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b110: alu_op_o = ALU_OR; // ori
@@ -146,6 +151,7 @@ module decoder import common::*;(
 			end
 			// 0110011: OP
 			7'b0110011: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				rs1_used_o = 1'b1;
 				rs2_used_o = 1'b1;
@@ -159,6 +165,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_MUL; // mul
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b001: begin
@@ -168,6 +175,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_MULH; // mulh
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b010: begin
@@ -177,6 +185,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_MULHSU; // mulhsu
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b011: begin
@@ -186,6 +195,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_MULHU; // mulhu
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b100: begin
@@ -195,6 +205,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_DIV; // div
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b101: begin
@@ -206,6 +217,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_DIVU; // divu
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b110: begin
@@ -215,6 +227,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_REM; // rem
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b111: begin
@@ -224,6 +237,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_REMU; // remu
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					default: begin
@@ -233,6 +247,7 @@ module decoder import common::*;(
 			end
 			// 0011011: OP-IMM-32
 			7'b0011011: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				imm_o      = imm_i;
@@ -246,6 +261,7 @@ module decoder import common::*;(
 							imm_o = {59'd0, instr_i[24:20]};
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b101: begin // srliw/sraiw
@@ -257,13 +273,18 @@ module decoder import common::*;(
 							imm_o = {59'd0, instr_i[24:20]};
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
-					default: wen_o = 1'b0;
+					default: begin
+						wen_o = 1'b0;
+						illegal_o = 1'b1;
+					end
 				endcase
 			end
 			// 0111011: OP-32
 			7'b0111011: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				is_word_o  = 1'b1;
 				rs1_used_o = 1'b1;
@@ -278,6 +299,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_MUL; // mulw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b001: begin
@@ -285,6 +307,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_SLL; // sllw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b101: begin
@@ -296,6 +319,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_DIVU; // divuw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b100: begin
@@ -303,6 +327,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_DIV; // divw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b110: begin
@@ -310,6 +335,7 @@ module decoder import common::*;(
 							alu_op_o = ALU_REM; // remw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
 					3'b111: begin
@@ -317,13 +343,18 @@ module decoder import common::*;(
 							alu_op_o = ALU_REMU; // remuw
 						end else begin
 							wen_o = 1'b0;
+							illegal_o = 1'b1;
 						end
 					end
-					default: wen_o = 1'b0;
+					default: begin
+						wen_o = 1'b0;
+						illegal_o = 1'b1;
+					end
 				endcase
 			end
 			// 0110111: LUI
 			7'b0110111: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				op1_zero_o = 1'b1;
@@ -332,6 +363,7 @@ module decoder import common::*;(
 			end
 			// 0010111: AUIPC
 			7'b0010111: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				op1_pc_o   = 1'b1;
@@ -340,6 +372,7 @@ module decoder import common::*;(
 			end
 			// 1101111: JAL
 			7'b1101111: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				is_jal_o   = 1'b1;
@@ -348,6 +381,7 @@ module decoder import common::*;(
 			// 1100111: JALR
 			7'b1100111: begin
 				if (funct3 == 3'b000) begin
+					illegal_o  = 1'b0;
 					wen_o      = 1'b1;
 					use_imm_o  = 1'b1;
 					is_jalr_o  = 1'b1;
@@ -357,6 +391,7 @@ module decoder import common::*;(
 			end
 			// 1100011: BRANCH
 			7'b1100011: begin
+				illegal_o   = 1'b0;
 				is_branch_o = 1'b1;
 				rs1_used_o  = 1'b1;
 				rs2_used_o  = 1'b1;
@@ -364,10 +399,12 @@ module decoder import common::*;(
 				branch_funct3_o = funct3;
 				if (!(funct3 inside {3'b000, 3'b001, 3'b100, 3'b101, 3'b110, 3'b111})) begin
 					is_branch_o = 1'b0;
+					illegal_o = 1'b1;
 				end
 			end
 			// 0000011: LOAD
 			7'b0000011: begin
+				illegal_o  = 1'b0;
 				wen_o      = 1'b1;
 				use_imm_o  = 1'b1;
 				imm_o      = imm_i;
@@ -385,11 +422,13 @@ module decoder import common::*;(
 					default: begin
 						wen_o = 1'b0;
 						is_load_o = 1'b0;
+						illegal_o = 1'b1;
 					end
 				endcase
 			end
 			// 0100011: STORE
 			7'b0100011: begin
+				illegal_o  = 1'b0;
 				use_imm_o  = 1'b1;
 				imm_o      = imm_s;
 				is_store_o = 1'b1;
@@ -403,11 +442,13 @@ module decoder import common::*;(
 					3'b011: mem_size_o = MSIZE8; // sd
 					default: begin
 						is_store_o = 1'b0;
+						illegal_o = 1'b1;
 					end
 				endcase
 			end
 			// 1101011: custom trap instruction (0x0005006b in lab test image)
 			7'b1101011: begin
+				illegal_o = 1'b0;
 				trap_o = 1'b1;
 			end
 			// 1110011: SYSTEM (CSR access)
@@ -415,17 +456,22 @@ module decoder import common::*;(
 				unique case (funct3)
 					3'b000: begin
 						if (instr_i == 32'h0000_0073) begin
+							illegal_o = 1'b0;
 							is_ecall_o = 1'b1;
 						end else if (instr_i == 32'h3020_0073) begin
+							illegal_o = 1'b0;
 							is_mret_o = 1'b1;
 						end else if (instr_i == 32'h1020_0073) begin
+							illegal_o = 1'b0;
 							is_sret_o = 1'b1;
 						end else if (funct7 == 7'b0001001) begin
+							illegal_o = 1'b0;
 							// SFENCE.VMA rs1, rs2 — treat as fence: redirect to pc+4 via EX
 							is_sfence_o = 1'b1;
 						end
 					end
 					3'b001, 3'b010, 3'b011: begin
+						illegal_o  = 1'b0;
 						// CSRRW / CSRRS / CSRRC: rs1 carries the source operand.
 						wen_o      = 1'b1;
 						is_csr_o   = 1'b1;
@@ -435,6 +481,7 @@ module decoder import common::*;(
 						rs1_used_o = 1'b1;
 					end
 					3'b101, 3'b110, 3'b111: begin
+						illegal_o  = 1'b0;
 						// CSRRWI / CSRRSI / CSRRCI: rs1 field is a 5-bit zero-extended uimm.
 						wen_o      = 1'b1;
 						is_csr_o   = 1'b1;

@@ -44,7 +44,8 @@ module id_stage import common::*;(
     output logic  is_ecall_o,
     output logic  is_mret_o,
     output logic  is_sret_o,
-    output logic  is_sfence_o
+    output logic  is_sfence_o,
+    output logic  illegal_o
 );
     logic rs1_used;
     logic rs2_used;
@@ -84,7 +85,8 @@ module id_stage import common::*;(
         .is_ecall_o   (is_ecall_o),
         .is_mret_o    (is_mret_o),
         .is_sret_o    (is_sret_o),
-        .is_sfence_o  (is_sfence_o)
+        .is_sfence_o  (is_sfence_o),
+        .illegal_o    (illegal_o)
     );
 
     always_comb begin
